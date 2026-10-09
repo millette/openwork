@@ -1,4 +1,4 @@
-// The browser host owns task identity, the session allow, observations and dispatch.
+// The browser host owns task identity, the optional session allow, observations and dispatch.
 // No model-specific API, arbitrary script execution, cookies or raw CDP surface.
 import { createHash, randomUUID } from "node:crypto";
 import { createBrowserSessionAllows } from "./browser-session-allows.mjs";
@@ -105,7 +105,8 @@ async function isolated(webContents, fn, ...args) {
 }
 
 export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isVisible, openTab, navigate,
-  allowed, enabled, confirm, changed, siteTools, runSiteTool, sessionAllows = createBrowserSessionAllows() }) {
+  allowed, enabled, confirm, changed, siteTools, runSiteTool, sessionAllows = createBrowserSessionAllows(),
+  askBeforeFirstUse = false }) {
   const states = new Map();
   const controls = new Map();
   const pausedSessions = new Set();
@@ -203,9 +204,10 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
   }
   async function access(scope) {
     const { tab, sessionId, control } = scope;
-    // One "use the browser" decision per session, kept across restarts.
-    // Takeover, cancellation and closing tabs stop in-flight work but never ask again.
-    if (sessionAllows.has(sessionId)) return;
+    // Browser use is allowed without asking for now. With askBeforeFirstUse,
+    // each session answers one "use the browser" question, kept across restarts;
+    // takeover, cancellation and closing tabs stop in-flight work but never ask again.
+    if (!askBeforeFirstUse || sessionAllows.has(sessionId)) return;
     if (!control.pending) {
       control.pending = (async () => {
         publish(tab.tabId, "needs_attention", "Browser control");

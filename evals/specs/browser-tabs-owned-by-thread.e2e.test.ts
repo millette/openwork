@@ -86,10 +86,7 @@ lifecycleTest("the global tab limit rejects new pages without disturbing live ta
       return true;
     }, { within: 15_000, label: "closing the tab removes its native page and releases one slot" });
 
-    const pending = agent.run("browser.open_url", { url: retryUrl, provider: "builtin" });
-    // The reading conversation's first agent browser use asks once.
-    await user.click({ role: "button", label: "Allow for this session" });
-    const result = await pending;
+    const result = await agent.run("browser.open_url", { url: retryUrl, provider: "builtin" });
     const retried = await eventually(() => world.readBrowserState(), {
       within: 15_000,
       until: state => state.tabs.some(tab => tab.url === retryUrl && tab.id === state.activeTabId),
@@ -195,14 +192,8 @@ lifecycleTest("repeated refused navigations leave no allocated page or hidden ho
     for (let attempt = 0; attempt < 3; attempt += 1) {
       // Chromium refuses this loopback port without depending on DNS or a server.
       const ownerSessionId = attempt === 1 ? reading.sessionId : researching.sessionId;
-      const rejected = expect(world.openTabAs(`refused-${attempt}`, ownerSessionId, "http://127.0.0.1:1"))
+      await expect(world.openTabAs(`refused-${attempt}`, ownerSessionId, "http://127.0.0.1:1"))
         .rejects.toThrow(/Browser operation could not finish/);
-      // Each session is asked once, on its first use; a failed load never asks again.
-      const firstUse = attempt < 2;
-      if (firstUse && ownerSessionId === researching.sessionId) await user.click(conversation(researching.title));
-      if (firstUse) await user.click({ role: "button", label: "Allow for this session" });
-      await rejected;
-      if (firstUse && ownerSessionId === researching.sessionId) await user.click(conversation(reading.title));
       await eventually(async () => {
         const state = await world.readBrowserState();
         expect(state.tabs).toEqual(baseline.tabs);
@@ -216,10 +207,10 @@ lifecycleTest("repeated refused navigations leave no allocated page or hidden ho
     }
     expect(await world.clickAndType(readingTab, "-after")).toEqual({ clicks: 2, value: "kept-after" });
     evidence.recordAssertionEvidence("Refused page loads leave nothing behind",
-      `3 opens of an unreachable address (one allow per session, none for the retry) failed with "Browser operation could not finish"; after each, tabs stayed ${baseline.tabs.length}, no hidden browser host, browser pages unchanged; the existing tab kept its text`, true);
+      `3 opens of an unreachable address failed with "Browser operation could not finish"; after each, tabs stayed ${baseline.tabs.length}, no hidden browser host, browser pages unchanged; the existing tab kept its text`, true);
   });
 
-  await step("A later open stays usable in the background without asking again", async () => {
+  await step("A later open stays usable in the background without a prompt", async () => {
     const recovered = await world.openTabAs("navigation-recovered", researching.sessionId);
     await user.notSee({ role: "button", label: "Allow for this session" });
     expect((await world.readBrowserState()).tabs).toHaveLength(2);
@@ -286,9 +277,9 @@ lifecycleTest("moving the last background page on screen releases its hidden hos
 
 // Effect contract: previously the browser toolbar exposed a memory-management action alongside navigation.
 // Removing Suspend simplifies that surface without unlocking a new capability: a person can still open,
-// read, and use a real page while thread ownership, the session allow, and explicit handle release remain intact.
+// read, and use a real page while thread ownership and explicit handle release remain intact.
 // The distinguishing assertion is Suspend's absence; no performance or memory-saving benefit is claimed.
-test("a background conversation is allowed once, then reads and acts on its owned page without switching the screen", async ({ world, user, agent, probe, step, evidence }) => {
+test("a background conversation reads and acts on its owned page without a prompt or switching the screen", async ({ world, user, agent, probe, step, evidence }) => {
   const reading = { ...world.session, title: "Reading the news" };
   await agent.run("session.rename", { sessionId: reading.sessionId, title: reading.title });
   const researching = { sessionId: await agent.createSession("Background research"), title: "Background research" };
@@ -297,9 +288,7 @@ test("a background conversation is allowed once, then reads and acts on its owne
     until: (state) => state.visibleSessionId === reading.sessionId,
     label: "the reading conversation is selected before requesting browser access" });
   // Match the real agent's origin-stamped command rather than a captured renderer selection.
-  const readingOpen = world.commandFrom(reading.sessionId, "browser.open_url", { url: `${world.origin}/?viewport-probe=reading`, provider: "builtin" });
-  await user.click({ role: "button", label: "Allow for this session" });
-  const readingResult = await readingOpen;
+  const readingResult = await world.commandFrom(reading.sessionId, "browser.open_url", { url: `${world.origin}/?viewport-probe=reading`, provider: "builtin" });
   expect(readingResult).toMatchObject({ ok: true, result: { owner_session_id: reading.sessionId } });
   if (!readingResult || typeof readingResult !== "object" || !("result" in readingResult)) {
     throw new Error(`The reading browser command returned no result: ${JSON.stringify(readingResult)}`);
@@ -312,42 +301,21 @@ test("a background conversation is allowed once, then reads and acts on its owne
   expect(panelViewport.width).toBeLessThan(BACKGROUND_TAB_VIEWPORT.width);
   const witness = () => probe.browserFixtureState(world.origin);
 
-  const researchTab = await step("A background open waits without switching conversations or contacting its destination", async () => {
+  const researchTab = await step("A background open loads its page without a prompt or switching conversations", async () => {
     const requests = (await witness()).pageRequests;
-    let settled = false;
-    // The server's HTTP mailbox answers within 5 s, so a command that must wait
-    // for the session allow is stamped with its origin at the window boundary instead.
-    const pending = world.commandFrom(researching.sessionId, "browser.open_url", { url: `${world.origin}/?viewport-probe=research`, provider: "builtin" })
-      .then((result) => { settled = true; return result; });
-    const state = await probe.eventually(() => probe.browserState(), { within: 10_000, until: (value) => value.tabs.some((tab) => tab.ownerSessionId === researching.sessionId), label: "the background command allocates an owned review tab" });
-    const blank = state.tabs.find((tab) => tab.ownerSessionId === researching.sessionId);
-    if (!blank) throw new Error("Missing background review tab.");
-    expect(state).toMatchObject({ visibleSessionId: reading.sessionId, activeTabId: readingTab.tabId });
-    expect(state).toMatchObject({ visibleWindowCount: 1, backgroundWindowVisible: false });
-    expect(blank.label).toBe("New tab");
-    expect(settled).toBe(false);
-    expect((await witness()).pageRequests).toEqual(requests);
-    // A tab waiting for the session allow has no document yet: it stays off every
-    // host, unsized, and allocates no hidden window until its first navigation completes.
-    expect(state).toMatchObject({ backgroundWindowCount: 0 });
-    expect(state.nativeViews.find((view) => view.tabId === blank.id)).toMatchObject({ attached: false, aboveApp: false, bounds: { x: 0, y: 0, width: 0, height: 0 } });
+    const result = await world.commandFrom(researching.sessionId, "browser.open_url", { url: `${world.origin}/?viewport-probe=research`, provider: "builtin" });
+    if (!result || typeof result !== "object" || !("result" in result)) throw new Error(`The background browser command returned no result: ${JSON.stringify(result)}`);
+    expect(result).toMatchObject({ ok: true, result: { owner_session_id: researching.sessionId } });
+    const opened = browserTabHandle(result.result);
+    expect((await witness()).pageRequests).toEqual([...requests, { path: "/", signedIn: false }]);
+    const state = await probe.browserState();
+    expect(state.tabs.find((tab) => tab.id === opened.tabId)?.ownerSessionId).toBe(researching.sessionId);
+    expect(state).toMatchObject({ visibleSessionId: reading.sessionId, activeTabId: readingTab.tabId, visibleWindowCount: 1, backgroundWindowVisible: false });
     await user.see(tabButton("reading"));
     await user.notSee(tabButton("research"));
     await user.notSee({ role: "button", label: "Allow for this session" });
     expect(await probe.browserTabMetrics(readingTab.targetId)).toMatchObject(panelViewport);
-    await user.click(conversation(researching.title));
-    await user.see({ role: "button", label: "Allow for this session" });
-    expect((await witness()).pageRequests).toEqual(requests);
-    await user.click({ role: "button", label: "Allow for this session" });
-    const result = await pending;
-    if (!result || typeof result !== "object" || !("result" in result)) throw new Error(`The background browser command returned no result: ${JSON.stringify(result)}`);
-    expect(result).toMatchObject({ ok: true, result: { owner_session_id: researching.sessionId, visible: true } });
-    const opened = browserTabHandle(result.result);
-    expect(opened.tabId).toBe(blank.id);
-    expect((await witness()).pageRequests).toEqual([...requests, { path: "/", signedIn: false }]);
-    await user.see(tabButton("research"));
-    await user.click(conversation(reading.title));
-    evidence.recordAssertionEvidence("Pending background navigation preserves the viewed conversation", "The origin-stamped command allocated an owned blank tab and stayed pending with zero additional page requests, no prompt in the unrelated conversation, and unchanged foreground dimensions. Selecting the owner and allowing the session once released exactly one GET into that same tab.", true);
+    evidence.recordAssertionEvidence("A background open preserves the viewed conversation", "The origin-stamped command opened an owned tab and sent exactly one GET with no prompt, while the visible conversation, its tab and its dimensions stayed the same.", true);
     return opened;
   });
   const task = (operation: BrowserTaskInput["operation"], args: BrowserTaskInput["args"] = {}) => agent.browserTask({ sessionId: researching.sessionId, operation, args: { tabId: researchTab.tabId, ...args } });
@@ -697,23 +665,16 @@ linkTest("a member opens transcript links in their saved destination and can ove
     return state.activeTabId;
   });
 
-  await step("The agent asks once before its first read of the manually opened page", async () => {
-    let returned = false;
-    const observing = agent.browserTask({ sessionId: world.reading.sessionId, operation: "observe", args: { tabId: manualTabId } })
-      .then(result => { returned = true; return result; });
-    await user.see({ role: "button", label: "Allow for this session" });
-    await user.see({ role: "button", label: "Take over" });
-    expect(returned).toBe(false);
-    await user.click({ role: "button", label: "Allow for this session" });
-    const observed = await observing;
+  await step("The agent reads the manually opened page without a prompt", async () => {
+    const observed = await agent.browserTask({ sessionId: world.reading.sessionId, operation: "observe", args: { tabId: manualTabId } });
     const destination = new URL(world.linkUrl);
     expect(observed).toMatchObject({ ok: true, tabId: manualTabId, url: destination.origin + destination.pathname });
     expect(typeof observed.text).toBe("string");
     await user.notSee({ role: "button", label: "Allow for this session" });
     await user.see({ role: "button", label: "Take over" });
     evidence.recordAssertionEvidence(
-      "The agent's first browser use in a session asks once, even for a tab the member opened",
-      `The agent's read waited on "Allow for this session"; after approval it read ${destination.origin + destination.pathname}`,
+      "The agent reads a tab the member opened without a permission prompt",
+      `The agent read ${destination.origin + destination.pathname} with no "Allow for this session" prompt`,
       true,
     );
   });
@@ -940,9 +901,7 @@ artifactTest("a transcript link replaces the selected artifact with its own live
     await user.see({ text: link.artifactText });
     expect((await world.readBrowserState()).nativeViews.every((view) => !view.attached)).toBe(true);
 
-    const pending = world.openTabAs("requested-preview", reading.sessionId);
-    await user.click({ role: "button", label: "Allow for this session" });
-    const requested = await pending;
+    const requested = await world.openTabAs("requested-preview", reading.sessionId);
     const state = await eventually(() => world.readBrowserState(), {
       within: 15_000,
       until: (value) => value.activeTabId === requested.tabId

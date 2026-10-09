@@ -7,17 +7,17 @@ it does not create a different website account for every conversation.
 
 ## User experience
 
-The first browser operation in a session asks **Allow this agent to use the
-browser?** once. **Allow for this session** is saved in the desktop profile and
-survives restarts; takeover, cancellation and closing tabs never ask again. Deleting
-the session forgets it. There are no per-action or
-per-tool prompts and no operation time limit. Organization policy and takeover
-are the other gates. Denying returns `user_denied`; a prompt dismissed without a
-choice (cancellation, closed tab) returns `canceled`, never `user_denied`.
+Browser use needs no permission prompt: there is no session, per-action or
+per-tool prompt and no operation time limit. Organization policy and takeover
+are the gates. The permission plumbing stays in place for a later, holistic
+permission design: the browser panel's approval prompt (`browserApproval`,
+`openwork:browser:approve`) and the task host's `askBeforeFirstUse` option, which
+restores one saved **Allow for this session** answer per session. With it on,
+denying returns `user_denied`; a prompt dismissed without a choice returns
+`canceled`.
 
 1. List the conversation's tabs and reuse a matching page, or open the requested
-   URL in a new owned tab, using the built-in browser's signed-in account. A new
-   session's first tab stays blank until the session is allowed.
+   URL in a new owned tab, using the built-in browser's signed-in account.
 2. Discover site tools. Prefer a relevant structured integration or site tool;
    otherwise observe the page and use its visible controls. A fresh image
    supports a coordinate click without a useful DOM reference.
@@ -63,8 +63,7 @@ observation before dispatch; failure or cancellation clears it. Timeouts and
 uncertain outcomes prohibit automatic replay, including through another method.
 
 Each conversation has one in-memory control scope. Takeover, disabling control
-and closing the last owned tab abort its in-flight operations without clearing
-the session allow. Cancellation aborts only that operation. Takeover stops pending
+and closing the last owned tab abort its in-flight operations. Cancellation aborts only that operation. Takeover stops pending
 task loads; only explicit address-bar, Back, Forward or Reload actions enable
 manual navigation. Webpage mouse and keyboard input do not enable navigation.
 Browser access is not task authorization for unrelated or consequential work,
@@ -192,7 +191,7 @@ planner, prompts, permission classifier or runtime implementation.
 ## Verification and limits
 
 `webmcp-browser-agent` is the browser-task journey: real engine plugins with a
-deterministic provider and controlled website witnesses for the single session allow, signed-in
+deterministic provider and controlled website witnesses for prompt-free use, signed-in
 invocation, DOM/image fallback, popup isolation, exact iframe delegation,
 cancellation, stale observations and observed completion.
 `browser-tabs-owned-by-thread` and `browser-panel-viewport-recovery` own

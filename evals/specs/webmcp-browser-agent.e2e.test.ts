@@ -6,7 +6,7 @@ import { attachBuiltinTab, browserTabHandle } from "../worlds/browser-panel.ts";
 
 const test = spec.world(browserWebMcpWorld);
 
-test("a conversation is allowed once, then signs in, uses site tools and page controls without more prompts, with isolation and recovery", async ({ world, seed, user, agent, probe, step, evidence }) => {
+test("a conversation uses the browser without a permission prompt, signs in, uses site tools and page controls without more prompts, with isolation and recovery", async ({ world, seed, user, agent, probe, step, evidence }) => {
   const sessionId = world.session.sessionId;
   const task = (operation: BrowserTaskInput["operation"], args: BrowserTaskInput["args"] = {}) => agent.browserTask({ sessionId, operation, args });
   const promptText = /Allow this agent to use the browser\?|Allow for this session|Allow browser control for this thread\?|Allow browser action\?|Allow website action\?|Allow once|Share result/;
@@ -35,13 +35,10 @@ test("a conversation is allowed once, then signs in, uses site tools and page co
     expect(response.status).toBe(204);
   };
 
-  const listed = await step("One session allow gates the first GET, then discovery needs no other prompt", async () => {
+  const listed = await step("The first open and discovery need no permission prompt", async () => {
     expect((await probe.browserState()).tabs).toEqual([]);
     expect(await witness()).toMatchObject({ pageRequests: [], signInCount: 0, records: [], sessionReads: 0 });
     await prompt("Open the controlled project page and discover its website tools.");
-    await user.see({ text: "Allow this agent to use the browser?" });
-    expect((await witness()).pageRequests).toEqual([]);
-    await user.click({ role: "button", label: "Allow for this session" });
     const completed = await probe.eventually(async () => {
       expect(await probe.text()).not.toMatch(promptText);
       return conversation();
@@ -80,37 +77,8 @@ test("a conversation is allowed once, then signs in, uses site tools and page co
   const save = listed.tools.find((tool) => tool.name === "save_draft");
   if (!save) throw new Error("No concrete save tool.");
 
-  await step("Denied and closed pending opens contact no destination and release their blank tabs", async () => {
-    const before = await probe.browserState();
-    const requests = (await witness()).pageRequests;
-    for (const decision of ["deny", "close"]) {
-      const deniedSessionId = await agent.createSession(`Refused browser ${decision}`);
-      const pending = agent.browserTask({ sessionId: deniedSessionId, operation: "open", args: { url: `${world.origin}/navigation-${decision}` } });
-      await user.see({ text: "Allow this agent to use the browser?" });
-      await user.see({ role: "button", label: "Allow for this session" });
-      const state = await probe.browserState();
-      const blank = state.tabs.find((tab) => tab.id === state.activeTabId);
-      if (!blank) throw new Error("The pending open has no review tab.");
-      expect(state.tabs).toHaveLength(before.tabs.length + 1);
-      expect(blank).toMatchObject({ ownerSessionId: deniedSessionId, label: "New tab" });
-      expect((await witness()).pageRequests).toEqual(requests);
-      if (decision === "deny") await user.click({ role: "button", label: "Deny" });
-      else {
-        await user.hover({ role: "button", label: `Select tab: ${blank.label}` });
-        await user.click({ role: "button", label: `Close tab: ${blank.label}` });
-      }
-      const result = await pending;
-      expect(result).toMatchObject({ ok: false, dispatched: false, mayHaveChangedState: false });
-      // Closing the tab dismisses the question; only Deny is reported as a denial.
-      expect(result.code).toBe(decision === "deny" ? "user_denied" : "canceled");
-      await probe.eventually(() => probe.browserState(), { within: 5_000, until: (value) => value.tabs.length === before.tabs.length, label: "the refused open releases its blank tab" });
-      expect((await probe.browserState()).tabs).toEqual(before.tabs);
-      expect((await witness()).pageRequests).toEqual(requests);
-    }
-  });
-
   await user.click({ text: world.session.title });
-  await step("The session allow covers another tab and allowed cross-origin redirects", async () => {
+  await step("Another tab and allowed cross-origin redirects open without a prompt", async () => {
     const requests = (await witness()).pageRequests;
     const localhost = `http://localhost:${new URL(world.origin).port}`;
     const opened = await task("open", { url: `${world.origin}/redirect` });
@@ -332,10 +300,7 @@ test("a conversation is allowed once, then signs in, uses site tools and page co
     }
     const otherRequests = (await witness()).pageRequests;
     const otherOpen = agent.browserTask({ sessionId: otherId, operation: "open", args: { url: `${world.origin}/other` } });
-    // The allow belongs to one session; another session asks for itself once.
-    await user.see({ text: "Allow this agent to use the browser?" });
-    expect((await witness()).pageRequests).toEqual(otherRequests);
-    await user.click({ role: "button", label: "Allow for this session" });
+    // Another session opens its own tab without a prompt too.
     const otherTab = await otherOpen;
     expect(otherTab).toMatchObject({ ok: true });
     expect((await witness()).pageRequests).toEqual([...otherRequests, { path: "/other", signedIn: true }]);
