@@ -331,11 +331,11 @@ jitTest("SKILL-CLOUD-DISCOVERY a member discovers Cloud skills without delaying 
   try {
     await step("before: the first conversation answers while Cloud discovery is still held", async () => {
       expect((await world.authorizeCloud(account)).status).toBe(200);
-      await probe.eventually(() => world.cloud.resourceReads({ uri: "skill://index.json" }), {
+      await probe.eventually(() => world.cloud.skillListings(), {
         within: 45_000, until: reads => reads.some(read => read.status === 0), label: "Cloud catalog request is held",
       });
       const turn = await talk.ask(target, "UNAVAILABLE");
-      const pending = world.cloud.resourceReads({ uri: "skill://index.json" }).some(read => read.status === 0);
+      const pending = world.cloud.skillListings().some(read => read.status === 0);
       expect(pending).toBe(true);
       evidence.recordAssertionEvidence("Cold Cloud discovery never holds the first answer", `The conversation completed while the catalog HTTP request was still unanswered; answer: ${turn.text}`, pending);
     });

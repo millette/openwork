@@ -101,6 +101,7 @@ import {
 } from "./connect-mcp-server-index.js"
 import { registerAgentSkillTools } from "./skill-created-app.js"
 import { registerAgentSkillCatalogTools, standardSkillMarkdown, type RemoteSkillSource } from "./skill-tools.js"
+import { registerSkillsExtension, skillsExtensionServerCapabilities } from "./skills-extension.js"
 import {
   connectionActionSearchCard,
   connectionActionAppMeta,
@@ -241,6 +242,8 @@ async function mcpRequestInfo(request: Request): Promise<{ method: string | null
   return { method, resourceUri, generatedCatalog: needsGeneratedArtifactCatalog(method, params) }
 }
 
+// Legacy discovery index read by desktops released before the MCP Skills
+// extension; skills/list (skills-extension.ts) carries the same catalog.
 export const AGENT_SKILL_INDEX_URI = "skill://index.json"
 export const AGENT_SKILL_INDEX_SCHEMA = "https://schemas.agentskills.io/discovery/0.2.0/schema.json"
 
@@ -372,7 +375,7 @@ export function createAgentMcpServer(options: { appServers?: boolean; remoteSess
     version: "1.0.0",
   }, {
     capabilities: {
-      ...workflowArtifactAppServerCapabilities,
+      extensions: { ...workflowArtifactAppServerCapabilities.extensions, ...skillsExtensionServerCapabilities },
       tools: { listChanged: true },
       resources: { listChanged: true, ...(options.remoteSessionEvents ? { subscribe: true } : {}) },
     },
@@ -591,6 +594,7 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
     const receiptStores = { commandStore: databaseRemoteSessionCommandStore, requestStore: databaseRemoteSessionRequestStore }
     const remoteSessionEventsEnabled = Boolean(memberIdentity && organizationFeatures.remoteSessionEvents)
     const server = createAgentMcpServer({ appServers: appServersEnabled, remoteSessionEvents: remoteSessionEventsEnabled })
+    registerSkillsExtension({ server, loadSkills: loadRemoteSkills, modelDiscovery: organizationFeatures.implicitCloudSkills })
     if (remoteSessionEventsEnabled) registerRemoteSessionReceiptResources({ server, ...receiptStores, ...receiptScope })
     registerAgentConnectionActionApp(server, { organizationId: principal.organizationId, member: memberIdentity })
     if (appServersEnabled) {
