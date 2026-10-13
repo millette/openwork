@@ -59,7 +59,7 @@ test("native Electron Library enrolls two ordinary members on one real Den conne
     const route = await page.hash();
     const sessionId = /\/session\/([^/?#]+)/.exec(route)?.[1];
     if (!sessionId) throw new Error("Owned session missing");
-    const native = engineSessionProbe({ engine: "v1", surface: desktop, workspaceId: desktop.workspaceId });
+    const native = engineSessionProbe({ surface: desktop, workspaceId: desktop.workspaceId });
     expect(JSON.stringify(await native.snapshot(sessionId)).includes(keys[name])).toBe(false);
     await person.see({ text: "Identity read finished." }, { timeoutMs: 60_000 });
     const line = await probe.eventually(async () => (await page.dom('[data-capability-call*="execute_capability"] span.truncate')).elements.find(row => row.rect.height > 0)?.text ?? "", { within: 30_000, until: Boolean, label: "actual completed capability sentence" });

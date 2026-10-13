@@ -7,7 +7,7 @@ const test = spec.world(savedAppCreation, { timeout: 900_000 });
 
 const draftTest = spec.world(cloudDraftRouting, {
   resources: { surfaces: ["appWeb"], services: ["den", "mock"] },
-  needs: { commands: ["bun", "pnpm", "opencode"] }, timeout: 600_000,
+  needs: { commands: ["bun", "pnpm"] }, timeout: 600_000,
 });
 
 draftTest("APP-DRAFT-ROUTING Cloud SDK draft allows automatic reads and one trusted Send without a second modal, replay, or cross-server dispatch", async ({ world, agent, user, probe, evidence }) => {
@@ -95,7 +95,7 @@ draftTest("APP-DRAFT-ROUTING Cloud SDK draft allows automatic reads and one trus
 
 const isolationTest = spec.world(isolatedMcpApps, {
   resources: { surfaces: ["appWeb"], services: ["mock"] },
-  needs: { commands: ["bun", "pnpm", "opencode"] }, timeout: 300_000,
+  needs: { commands: ["bun", "pnpm"] }, timeout: 300_000,
 });
 
 isolationTest("APP-ISOLATION embedded MCP Apps isolate siblings while SDK initialization and helper calls work", async ({ world, agent, user, probe, evidence }) => {
@@ -150,39 +150,6 @@ isolationTest("APP-ISOLATION embedded MCP Apps isolate siblings while SDK initia
   ]);
   expect(await world.nativeConfirmCalls()).toBe(0);
   evidence.recordAssertionEvidence("Reload preserves read-only background dispatch without duplicates or forged calls", "Each reloaded App completed one additional annotated read-only helper on its own provider. Both provider counts reached exactly two, with no forged arguments, approval dialog, or native confirmation.", true);
-});
-
-// The v2 engine does not expose a native archive mutation yet.
-isolationTest.skipIf(process.env.OPENWORK_EVAL_ENGINE === "v2")("APP-ARCHIVE archived conversations render Apps without actions (needs v1 archive API)", async ({ world, agent, user, probe, evidence }) => {
-  const sinceIso = new Date().toISOString();
-  await agent.send(isolationPrompt);
-  await user.see({ text: isolationReply }, { timeoutMs: 120_000 });
-  await user.notSee({ text: "Allow App action?" });
-  await probe.eventually(() => world.reports(), {
-    within: 30_000, label: "active Apps complete their initial helper requests",
-    until: values => values.length === 2 && values.every(value => value.complete === true && value.helper !== null),
-  });
-  await agent.run("session.archive", { sessionId: world.session.sessionId, archived: true });
-  await agent.run("session.open", { sessionId: world.session.sessionId });
-  const archived = await probe.eventually(() => world.reports(), {
-    within: 30_000, label: "archived Apps render results but reject helper actions",
-    until: values => values.length === 2 && values.every(value => value.complete === true && typeof value.helperError === "string"),
-  });
-  for (const label of ["A", "B"]) {
-    const report = archived.find(value => value.label === label);
-    expect(report).toMatchObject({
-      input: { marker: `input-${label}` },
-      result: { content: [{ type: "text", text: `initial-${label}` }], isError: false,
-        structuredContent: { serverTools: { provider: label }, schemaGuidance: `provider-${label}` }, _meta: { privateFixture: `view-only-${label}` } },
-      order: ["input", "result"], helper: null,
-    });
-    expect(report?.capabilities).toEqual({});
-  }
-  expect((await world.first.toolCalls({ name: "read_detail", sinceIso, atLeast: 1 })).map(call => call.args)).toEqual([{ marker: "legitimate-A" }]);
-  expect((await world.second.toolCalls({ name: "read_detail", sinceIso, atLeast: 1 })).map(call => call.args)).toEqual([{ marker: "legitimate-B" }]);
-  await user.notSee({ text: "Allow App action?" });
-  expect(await world.nativeConfirmCalls()).toBe(0);
-  evidence.recordAssertionEvidence("Archived conversations cannot dispatch even read-only App helper calls", "After active Apps completed their initial read-only helpers without host approval, reopened archived Apps received their original inputs and results, rejected helper requests without an approval dialog, and neither provider recorded an additional call. No native confirmation was invoked.", true);
 });
 
 test("create, preview, save and reopen an app without changing already-open results", async ({ world, user, probe, seed, step, evidence }) => {

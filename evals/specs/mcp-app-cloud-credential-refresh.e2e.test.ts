@@ -4,7 +4,7 @@ import { appTitle, chatPrompt, chatReply, launchInput, mcpAppServersChat } from 
 
 const test = spec.world(mcpAppServersChat, {
   resources: { surfaces: ["appWeb"], services: ["den", "mock"] },
-  needs: { commands: ["bun", "pnpm", "opencode"] }, timeout: 600_000,
+  needs: { commands: ["bun", "pnpm"] }, timeout: 600_000,
 });
 
 const pricedLine = `${launchInput.quantity} × ${launchInput.sku} at 7`;

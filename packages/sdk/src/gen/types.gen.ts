@@ -171,7 +171,6 @@ export type AdminFeature = {
     | "automationCalendar"
     | "permissions"
     | "teamRoles"
-    | "engineV2Upgrade"
     | "remoteSessionEvents";
   label: string;
   description: string;
@@ -219,7 +218,6 @@ export type AdminOrganizationsPageResponse = {
       automationCalendar: boolean;
       permissions: boolean;
       teamRoles: boolean;
-      engineV2Upgrade: boolean;
       remoteSessionEvents: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
@@ -296,15 +294,6 @@ export type AdminOrganizationsPageResponse = {
         overrideApplies: boolean;
       };
       teamRoles: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      engineV2Upgrade: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -393,7 +382,6 @@ export type AdminOverviewResponse = {
       automationCalendar: boolean;
       permissions: boolean;
       teamRoles: boolean;
-      engineV2Upgrade: boolean;
       remoteSessionEvents: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
@@ -470,15 +458,6 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       teamRoles: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      engineV2Upgrade: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -6067,7 +6046,6 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       automationCalendar: boolean;
       permissions: boolean;
       teamRoles: boolean;
-      engineV2Upgrade: boolean;
       remoteSessionEvents: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
@@ -6144,15 +6122,6 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       teamRoles: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      engineV2Upgrade: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -6229,7 +6198,6 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       automationCalendar: boolean;
       permissions: boolean;
       teamRoles: boolean;
-      engineV2Upgrade: boolean;
       remoteSessionEvents: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
@@ -6306,15 +6274,6 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       teamRoles: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      engineV2Upgrade: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;

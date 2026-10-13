@@ -8,7 +8,7 @@ import { appTitle, mcpAppServersChat } from "../worlds/mcp-app-servers.ts";
 // owner can open, so the dashboard starts empty and the owner adds it.
 const test = spec.world(mcpAppServersChat, {
   resources: { surfaces: ["appWeb"], services: ["den", "mock"] },
-  needs: { commands: ["bun", "pnpm", "opencode"] }, timeout: 600_000,
+  needs: { commands: ["bun", "pnpm"] }, timeout: 600_000,
 });
 
 const emptyHeading = "Pin the artifacts you check every day";

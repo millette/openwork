@@ -19,8 +19,14 @@ function listField(value: unknown, field: string): unknown[] {
   return isRecord(value) && Array.isArray(value[field]) ? value[field] : [];
 }
 
-function connectedProviderIds(body: unknown): string[] {
-  return listField(body, "connected").filter((id): id is string => typeof id === "string");
+function stringList(value: unknown, field: string): string[] {
+  return listField(value, field).filter((id): id is string => typeof id === "string");
+}
+
+/** Providers the engine's model catalog lists for a workspace (`{ data: [{ providerID }] }`). */
+function catalogProviderIds(body: unknown): string[] {
+  return [...new Set(listField(body, "data").flatMap((model) =>
+    isRecord(model) && typeof model.providerID === "string" ? [model.providerID] : []))];
 }
 
 function serverIdentity(body: unknown): { port: number; uptimeMs: number } {
@@ -48,19 +54,19 @@ test("a member who signs in before creating a workspace can use their organizati
   await step("the local engine is already running with no workspace", async () => {
     await user.notSee({ text: "Not connected to a server" });
     const engine = await probe.eventually(async () => {
-      const result = await probe.desktopApi("/opencode/provider");
-      return { status: result.status, providers: listField(result.body, "all").length };
+      const result = await probe.desktopApi("/engine/status");
+      return { status: result.status, running: isRecord(result.body) && result.body.running === true };
     }, {
       within: 120_000,
-      label: "the engine answers without a workspace",
-      until: (result) => result.status === 200,
+      label: "the engine runs without a workspace",
+      until: (result) => result.status === 200 && result.running,
     });
     evidence.recordAssertionEvidence(
-      "The engine answers before any workspace exists",
-      `GET /opencode/provider → HTTP ${engine.status}; ${engine.providers} providers in the catalog`,
-      engine.status === 200,
+      "The engine runs before any workspace exists",
+      `GET /engine/status → HTTP ${engine.status}; running: ${engine.running}`,
+      engine.status === 200 && engine.running,
     );
-    expect(engine.status).toBe(200);
+    expect(engine.running).toBe(true);
   });
 
   await step("after: AI provider settings list the organization's provider instead of a server error", async () => {
@@ -70,19 +76,19 @@ test("a member who signs in before creating a workspace can use their organizati
     await user.notSee({ text: "Failed to load providers" });
     await user.notSee({ text: "Loading providers..." });
     const synced = await probe.eventually(async () => {
-      const result = await probe.desktopApi("/opencode/provider");
-      return { status: result.status, connected: connectedProviderIds(result.body) };
+      const result = await probe.desktopApi("/engine/status");
+      return { status: result.status, mirrored: stringList(result.body, "mirroredProviderIds") };
     }, {
       within: 60_000,
       label: "the engine holds the organization provider",
-      until: (result) => result.status === 200 && result.connected.includes(world.providerId),
+      until: (result) => result.status === 200 && result.mirrored.includes(world.providerId),
     });
     evidence.recordAssertionEvidence(
       "Settings › AI providers shows the organization provider, served by the running engine",
-      `"${world.providerName}" is listed with no server error; GET /opencode/provider → HTTP ${synced.status}, organization provider connected: ${synced.connected.includes(world.providerId)}`,
-      synced.connected.includes(world.providerId),
+      `"${world.providerName}" is listed with no server error; GET /engine/status → HTTP ${synced.status}, organization provider in the engine: ${synced.mirrored.includes(world.providerId)}`,
+      synced.mirrored.includes(world.providerId),
     );
-    expect(synced.connected).toContain(world.providerId);
+    expect(synced.mirrored).toContain(world.providerId);
     await user.screenshot();
   });
 
@@ -118,11 +124,11 @@ test("a member who signs in before creating a workspace can use their organizati
 
   await step("after: the new workspace uses the same organization provider without reconnecting", async () => {
     await user.see("composer", { editable: true, timeoutMs: 60_000 });
-    const providers = await probe.desktopApi(`/workspace/${joined.workspaceId}/opencode/provider`);
-    const connected = connectedProviderIds(providers.body);
+    const providers = await probe.desktopApi(`/workspace/${joined.workspaceId}/opencode2/api/model`);
+    const connected = catalogProviderIds(providers.body);
     evidence.recordAssertionEvidence(
       "The organization provider carries over into the first workspace",
-      `GET /workspace/${joined.workspaceId}/opencode/provider → HTTP ${providers.status}; connected: ${connected.join(", ") || "none"}`,
+      `GET /workspace/${joined.workspaceId}/opencode2/api/model → HTTP ${providers.status}; providers: ${connected.join(", ") || "none"}`,
       providers.status === 200 && connected.includes(world.providerId),
     );
     expect(connected).toContain(world.providerId);

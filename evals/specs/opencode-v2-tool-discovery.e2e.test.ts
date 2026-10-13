@@ -6,7 +6,7 @@ import { v2ToolDiscovery } from "../worlds/v2-tool-discovery.ts";
 const test = spec.world(v2ToolDiscovery, {
   timeout: 420_000,
   resources: { surfaces: ["appWeb"], services: ["mock"] },
-  needs: { placement: "local", env: ["OPENWORK_EVAL_ENGINE"] },
+  needs: { placement: "local" },
 });
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -20,7 +20,6 @@ function executions(value: unknown): Record<string, unknown>[] {
 }
 
 test("a v2 conversation discovers and calls a connected tool without the unknown-search error", async ({ world, user, probe, step, evidence }) => {
-  expect(world.engine).toBe("v2");
   const nonce = world.nonce;
   let workspaceId = "";
   let sessionId = "";

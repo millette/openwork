@@ -35,9 +35,9 @@ test("first launch opens an empty signed-out workspace and runs the first prompt
       activeId: workspaceId,
       items: [{ id: workspaceId, workspaceType: "local", path: expect.stringMatching(/[/\\]OpenWork Chat$/) }],
     });
-    const sessions = await probe.desktopApi(`/workspace/${workspaceId}/opencode/session`);
+    const sessions = await probe.desktopApi(`/workspace/${workspaceId}/opencode2/api/session`);
     expect(sessions.status).toBe(200);
-    expect(sessions.body).toEqual([]);
+    expect(sessions.body).toMatchObject({ data: [] });
     await user.see({ role: "button", label: "Change model" });
     await user.see({ text: "Big Pickle" });
     expect(await probe.storage("openwork.defaultModel")).toBe("opencode/big-pickle");

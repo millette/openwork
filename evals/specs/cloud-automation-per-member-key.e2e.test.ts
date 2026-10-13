@@ -192,11 +192,12 @@ test("an Automation owner without their own provider key is told to get one, and
   });
   const runtime = { url: computer.manifest.openworkUrl, clientToken: computer.manifest.token, hostToken: computer.manifest.hostToken };
   await eventually(async () => {
-    const response = await fetch(`${runtime.url}/opencode/config`, {
+    const response = await fetch(`${runtime.url}/engine/status`, {
       headers: { authorization: `Bearer ${runtime.clientToken}` }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     }).catch(() => null);
-    return response?.ok === true;
-  }, { within: 180_000, intervalMs: 2_000, label: "the computer's engine is serving its config" });
+    const status: unknown = response?.ok ? await response.json() : null;
+    return isRecord(status) && status.running === true;
+  }, { within: 180_000, intervalMs: 2_000, label: "the computer's engine is running" });
 
   const users = await queryDenDatabase(databaseUrl, "SELECT id FROM `user` WHERE email = ? LIMIT 1", [owner.email]);
   const ownerUserId = stringAt(users.filter(isRecord)[0], "id");
@@ -331,9 +332,10 @@ test("an Automation owner without their own provider key is told to get one, and
   );
 });
 
-async function readProviders(runtime: { url: string; clientToken: string }): Promise<Record<string, unknown>> {
-  const response = await fetch(`${runtime.url}/opencode/config`, {
-    headers: { authorization: `Bearer ${runtime.clientToken}` }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+/** The providers Den wrote into the computer's runtime config, which the engine mirrors. */
+async function readProviders(runtime: { url: string; hostToken: string }): Promise<Record<string, unknown>> {
+  const response = await fetch(`${runtime.url}/runtime-config/providers`, {
+    headers: { "x-openwork-host-token": runtime.hostToken }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   const payload: unknown = await response.json();
   if (!response.ok || !isRecord(payload)) throw new Error(`Reading the computer's models failed: HTTP ${response.status}`);

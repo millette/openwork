@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { expect } from "vitest";
-import { readTranscriptMessages, resolveEvalEngine, spec } from "@openwork/testkit";
+import { readTranscriptMessages, spec } from "@openwork/testkit";
 import { engineParity } from "../worlds/engine-parity.ts";
 
 const test = spec.world(engineParity, {
   timeout: 300_000,
   resources: { surfaces: ["appWeb"], services: ["mock"] },
-  needs: { placement: "local", env: ["OPENWORK_EVAL_ENGINE"] },
+  needs: { placement: "local" },
 });
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -15,7 +15,7 @@ function record(value: unknown): value is Record<string, unknown> {
 
 // Native engines own abort, revert and history. Only model transport is synthetic;
 // a held stream proves that the old turn cannot finish before the edit is sent.
-test(`EDIT-BUSY ${resolveEvalEngine()}: replace a running message instead of queueing the edit`, async ({ world, user, probe, step, evidence }) => {
+test(`EDIT-BUSY: replace a running message instead of queueing the edit`, async ({ world, user, probe, step, evidence }) => {
   await probe.eventually(() => probe.composer(), {
     within: 60_000, label: "starter model ready", until: state => state.selectedModelLabel.includes("Big Pickle") && !state.modelUnavailable,
   });
@@ -27,7 +27,7 @@ test(`EDIT-BUSY ${resolveEvalEngine()}: replace a running message instead of que
   const workspaceId = /\/workspace\/([^/]+)\/session/.exec(route)?.[1];
   const sessionId = route.split("/").at(-1);
   if (!workspaceId || !sessionId) throw new Error("Expected a saved conversation");
-  const nativePath = `/workspace/${workspaceId}/${world.engine === "v2" ? "opencode2/api" : "opencode"}/session/${sessionId}`;
+  const nativePath = `/workspace/${workspaceId}/opencode2/api/session/${sessionId}`;
   const expectedUsers = [world.prompt];
 
   for (const submission of ["Enter", "button"]) {

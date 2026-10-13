@@ -1,15 +1,14 @@
 import { mkdir, realpath } from "node:fs/promises";
-import { resolveEvalEngine, SkipError, type Seed } from "@openwork/env";
+import type { Seed } from "@openwork/env";
 import { configureProvider } from "./chat.ts";
 
 /**
- * A person hands a long job to a background helper and keeps chatting. Only v2
- * runs helpers in the background: the parent turn ends while the helper keeps
+ * A person hands a long job to a background helper and keeps chatting. The
+ * engine runs helpers in the background: the parent turn ends while the helper keeps
  * going, and when the helper finishes the engine wakes the parent with the
  * helper's final text, so the "wake" workload matches that text.
  */
 export async function agentBackground(seed: Seed) {
-  if (resolveEvalEngine() !== "v2") throw new SkipError("Background helpers only exist on OpenCode v2");
   const dir = seed.tmpPath("agent-background");
   await mkdir(dir, { recursive: true });
   const workspacePath = await realpath(dir);
@@ -45,7 +44,7 @@ export async function agentBackground(seed: Seed) {
       options: { baseURL: `${mock.url}/v1`, apiKey: "sk-background-fixture" },
       models: { [modelId]: { name: "Background model" } },
     } },
-  }, "v2");
+  });
   const session = await seed.session(app, { title: "Screenshot check" });
   return {
     app, workspace, session, prompt, started, quickQuestion, quickAnswer, wakeReply,

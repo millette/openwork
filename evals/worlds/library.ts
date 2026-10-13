@@ -2,7 +2,7 @@ import { browserScript, locate } from "@openwork/cdp";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { app as startApp, faultProxy as startFaultProxy, resolveEvalEngine } from "@openwork/env";
+import { app as startApp, faultProxy as startFaultProxy } from "@openwork/env";
 import type { Den, MockHandle, Seed } from "@openwork/env";
 import { denFetch, evalIn as rawEvalIn } from "@openwork/behaviors";
 import type { DenFetchResult, DenSession } from "@openwork/behaviors";
@@ -328,7 +328,6 @@ export async function preseededConnect(seed: Seed) {
 }
 
 export async function connectorBranding(seed: Seed) {
-  const engine = resolveEvalEngine();
   const proof = `Channel list ${crypto.randomUUID()}`;
   const prompt = "List three of my Slack channels.";
   const failurePrompt = "Read the three latest items in my Slack history.";
@@ -337,7 +336,7 @@ export async function connectorBranding(seed: Seed) {
   const toolArguments = { limit: 3 };
   const inputSchema = { type: "object", properties: { limit: { type: "integer" } }, required: ["limit"] };
   const search = (name: string) => ({ query: `Slack ${name}`, type: "mcp", limit: 1 });
-  const steps = (name: string) => engine === "v2" ? [{
+  const steps = (name: string) => [{
     tool: "execute",
     arguments: { code: `
       const found = await tools["openwork-cloud"].search_capabilities(${JSON.stringify(search(name))});
@@ -345,10 +344,7 @@ export async function connectorBranding(seed: Seed) {
       const catalog = result.matches ? result : JSON.parse(result.content[0].text);
       return await tools["openwork-cloud"].execute_capability({ name: catalog.matches[0].name, body: ${JSON.stringify(toolArguments)} });
     ` },
-  }] : [
-    { tool: "search_capabilities", arguments: search(name) },
-    { tool: "execute_capability", arguments: { body: toolArguments }, argumentsFrom: "capability-search" },
-  ];
+  }];
   const den = await seed.den({
     org: { name: "Connector tool display", admin: { name: "Connector Admin" } },
     mocks: { connector: seed.mock({
@@ -387,7 +383,7 @@ export async function connectorBranding(seed: Seed) {
     } },
   });
   await seed.session(app);
-  return { app, den, engine, prompt, failurePrompt, mutationPrompt, mutationProof, proof };
+  return { app, den, prompt, failurePrompt, mutationPrompt, mutationProof, proof };
 }
 
 export async function connectorCatalogManagement(seed: Seed) {
@@ -708,7 +704,7 @@ export async function libraryConfigReadBudget(seed: Seed) {
       const target = args[0] instanceof Request ? args[0].url : String(args[0]);
       if (typeof target === "string" && target.includes("/opencode-config")) window.__opencodeConfigReads += 1;
       if (typeof target === "string" && target.includes("/skills/browser-automation")) window.__librarySkillReads += 1;
-      if (typeof target === "string" && (target.includes("/cloud-provider-sync/status") || target.includes("/opencode/config?") || target.endsWith("/mcp") || target.endsWith("/den-session"))) window.__libraryLifecycleReads += 1;
+      if (typeof target === "string" && (target.includes("/cloud-provider-sync/status") || target.endsWith("/mcp") || target.endsWith("/den-session"))) window.__libraryLifecycleReads += 1;
       return originalFetch.apply(this, args);
     };
     const bridge = window.__OPENWORK_ELECTRON__;
@@ -1128,12 +1124,12 @@ async function configureWorkspaceModel(seed: Seed, input: {
     let healthy = false;
     while (Date.now() < deadline) {
       try {
-        const health = await fetch("http://127.0.0.1:" + port + "/workspace/" + encodeURIComponent(workspaceId) + "/opencode/global/health", {
+        const health = await fetch("http://127.0.0.1:" + port + "/engine/status", {
           headers: { Authorization: "Bearer " + token }, signal: AbortSignal.timeout(5_000),
         });
         if (health.ok) {
           const readiness: unknown = await health.json();
-          if (readiness && typeof readiness === "object" && "healthy" in readiness && readiness.healthy === true) {
+          if (readiness && typeof readiness === "object" && "running" in readiness && readiness.running === true) {
             healthy = true;
             break;
           }

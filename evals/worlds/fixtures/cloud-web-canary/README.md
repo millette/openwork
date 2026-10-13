@@ -25,8 +25,8 @@ builder. No Electron, headless-Web substitute, auth injection or API-driven chat
   OpenAI-compatible chat-completions provider, base URL `${CANARY_MODEL_URL}/v1`,
   and the fixture key. Route title/compaction models here too. Disable all paid
   providers, production connectors/telemetry and unrelated outbound services.
-- Use real OpenCode v1 with its advertised `write` and `read` tools, allowed in
-  the canary workspace. Set Den `CLOUD_IDLE_STOP_MINUTES=1`; the default
+- Use the real OpenCode engine with its advertised `write` and `read` tools,
+  allowed in the canary workspace. Set Den `CLOUD_IDLE_STOP_MINUTES=1`; the default
   `CLOUD_IDLE_LOOP_SECONDS=60` fits the bounded four-minute wait. Keep the image
   version current to avoid testing an unrelated auto-update during wake.
 
@@ -125,7 +125,7 @@ The deterministic protocol issues one write, waits for its correlated engine
 result, issues read, then validates the **new read result** before answering.
 It selects the actual advertised tool names and argument schemas, not a shell
 substitute. Unknown required parameters and mismatched reads fail closed.
-It supports current and legacy OpenCode v1 numbered text-file output. A new user
+It requires a numbered file line in OpenCode's read output. A new user
 turn always gets a new read call, even when its prompt repeats. Old-history
 results cannot satisfy it. A two-second SSE split lets Chrome assert an actual
 partial assistant answer before the completed answer.

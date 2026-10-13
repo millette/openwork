@@ -220,8 +220,7 @@ recoveryTest("a confirmed update relaunch resumes only the unfinished task on it
   user = user.on(world.app);
   agent = agent.on(world.app);
   probe = probe.on(world.app);
-  const v2 = world.engine === "v2";
-  const mount = `/workspace/${encodeURIComponent(world.workspace.workspaceId)}/${v2 ? "opencode2/api" : "opencode"}`;
+  const mount = `/workspace/${encodeURIComponent(world.workspace.workspaceId)}/opencode2/api`;
   const record = (value: unknown): Record<string, unknown> => {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Expected an engine record");
     return Object.fromEntries(Object.entries(value));
@@ -229,17 +228,16 @@ recoveryTest("a confirmed update relaunch resumes only the unfinished task on it
   const read = async (path: string): Promise<unknown> => {
     const response = await probe.desktopApi(`${mount}${path}`);
     expect(response.status).toBe(200);
-    return v2 ? record(response.body).data : response.body;
+    return record(response.body).data;
   };
   const messages = async (sessionId: string) => {
-    const value = await read(`/session/${sessionId}/${v2 ? "context" : "message?limit=100"}`);
+    const value = await read(`/session/${sessionId}/context`);
     if (!Array.isArray(value)) throw new Error("Expected engine messages");
     return value.map((entry: unknown) => {
       const message = record(entry);
-      const info = v2 ? message : record(message.info);
-      const parts = v2 ? message.content : message.parts;
+      const parts = message.content;
       if (!Array.isArray(parts)) throw new Error("Expected message parts");
-      return { id: info.id, role: info[v2 ? "type" : "role"], parts: parts.map(record) };
+      return { id: message.id, role: message.type, parts: parts.map(record) };
     });
   };
   const open = async (session: { sessionId: string; title: string }) => {
@@ -249,7 +247,7 @@ recoveryTest("a confirmed update relaunch resumes only the unfinished task on it
   };
   const send = async (text: string) => { await user.type("composer", text, { verify: true }); await user.press("Enter"); };
   const active = async (id: string) => {
-    const statuses = record(await read(v2 ? "/session/active" : "/session/status"));
+    const statuses = record(await read("/session/active"));
     const status = statuses[id];
     return status !== undefined && ["running", "busy", "retry"].includes(String(record(status).type));
   };

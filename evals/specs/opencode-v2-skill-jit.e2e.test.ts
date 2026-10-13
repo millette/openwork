@@ -15,8 +15,8 @@ const test = spec.world(skillLifecycle, {
   needs: liveOpenAiEnabled() ? { env: ["OPENAI_API_KEY"], daytona: true } : {},
 });
 
-// The engine is selected by the world. The journey does not inspect injected
-// instructions, catalog formatting, native tool names, or engine message shapes.
+// The journey does not inspect injected instructions, catalog formatting,
+// native tool names, or engine message shapes.
 test("workspace skills change during an ongoing conversation", async ({ world, user, agent, probe, step, evidence }) => {
   const runtime = await world.runtimeIdentity();
   const sessionRoute = await probe.hash();
@@ -132,17 +132,14 @@ selectedTest("SKILL-ATTACH explicitly selected skills reach the first native mod
   expect(runtime.browser).toContain("HeadlessChrome");
   expect(runtime.electronBridge).toBe(false);
   const prefix = `/workspace/${world.workspace.workspaceId}/opencode2/api`;
-  const before = world.engine === "v2" ? await world.readNative("/experimental/engine-v2-preview/status") : null;
-  let nativeID = "";
-  if (world.engine === "v2") {
-    expect(before?.body).toMatchObject({ running: true, chatRouting: true });
-    const catalog = await world.readNative(`${prefix}/skill`);
-    const skills = record(catalog.body) && Array.isArray(catalog.body.data) ? catalog.body.data.filter(record) : [];
-    const skill = skills.find((entry) => entry.name === world.skillName);
-    expect(skill?.content).toContain(world.skillBody);
-    if (typeof skill?.id !== "string") throw new Error("Selected skill is not natively registered");
-    nativeID = skill.id;
-  }
+  const before = await world.readNative("/engine/status");
+  expect(before.body).toMatchObject({ running: true });
+  const catalog = await world.readNative(`${prefix}/skill`);
+  const skills = record(catalog.body) && Array.isArray(catalog.body.data) ? catalog.body.data.filter(record) : [];
+  const skill = skills.find((entry) => entry.name === world.skillName);
+  expect(skill?.content).toContain(world.skillBody);
+  if (typeof skill?.id !== "string") throw new Error("Selected skill is not natively registered");
+  const nativeID = skill.id;
   await step("choose a real skill pill and submit through the composer", async () => {
     await openSkillMenu(user, world.skillName);
     await user.type("composer", ` ${world.prompt}`);
@@ -158,22 +155,15 @@ selectedTest("SKILL-ATTACH explicitly selected skills reach the first native mod
   expect(requests.length).toBeGreaterThan(0);
   const first = requests[0];
   const modelRequests = await world.modelRequests();
-  if (world.engine === "v2") {
-    expect(prompts[0]).toEqual({ text: expect.stringContaining(world.prompt), skills: [{ id: nativeID }] });
-    // The engine's own permission evaluation is consulted for the resolved id before anything is submitted.
-    expect(nativeRequests.map((request) => request.kind)).toEqual(["permission", "prompt"]);
-    expect(nativeRequests[0]?.body).toMatchObject({ action: "skill", resources: [nativeID] });
-    expect(JSON.stringify(prompts[0])).not.toContain("Load ");
-    expect(JSON.stringify(first)).toContain(world.skillBody);
-    expect(requests).toHaveLength(1);
-    expect(modelRequests).toEqual([expect.objectContaining({ kind: "final", completedTools: 0, toolName: null })]);
-    expect(await world.readNative("/experimental/engine-v2-preview/status")).toEqual(before);
-  } else {
-    expect(JSON.stringify(prompts[0])).toContain(`Load [skill ${world.skillName}] and follow its instructions.`);
-    expect(JSON.stringify(first)).not.toContain(world.skillBody);
-    expect(modelRequests.some((request) => request.toolName === "skill")).toBe(true);
-    expect(JSON.stringify(requests.at(-1))).toContain(world.skillBody);
-  }
+  expect(prompts[0]).toEqual({ text: expect.stringContaining(world.prompt), skills: [{ id: nativeID }] });
+  // The engine's own permission evaluation is consulted for the resolved id before anything is submitted.
+  expect(nativeRequests.map((request) => request.kind)).toEqual(["permission", "prompt"]);
+  expect(nativeRequests[0]?.body).toMatchObject({ action: "skill", resources: [nativeID] });
+  expect(JSON.stringify(prompts[0])).not.toContain("Load ");
+  expect(JSON.stringify(first)).toContain(world.skillBody);
+  expect(requests).toHaveLength(1);
+  expect(modelRequests).toEqual([expect.objectContaining({ kind: "final", completedTools: 0, toolName: null })]);
+  expect(await world.readNative("/engine/status")).toEqual(before);
   const visible = await readTranscriptMessages(probe, "user");
   expect(visible).toHaveLength(1);
   expect(visible[0]).toContain(world.prompt);
@@ -185,18 +175,17 @@ selectedTest("SKILL-ATTACH explicitly selected skills reach the first native mod
   expect(await readTranscriptMessages(probe, "user")).toEqual(visible);
   expect(await readTranscriptMessages(probe, "system")).toEqual([]);
   evidence.recordJsonArtifact("SKILL-ATTACH boundary and reload", {
-    engine: world.engine, runtime, nativeID, nativeRequests, modelRequests,
+    runtime, nativeID, nativeRequests, modelRequests,
     firstRequestContainsFullBody: JSON.stringify(first).includes(world.skillBody),
     finalRequestContainsFullBody: JSON.stringify(requests.at(-1)).includes(world.skillBody),
     providerRequestCount: requests.length, visibleBeforeReload: visible,
     visibleAfterReload: await readTranscriptMessages(probe, "user"),
   });
   evidence.recordAssertionEvidence("Selected skills reach the first model request",
-    `A skill chosen in the composer reached the first ${world.engine} model request exactly once, stayed out of the visible message, and the conversation survived a reload.`, true);
+    `A skill chosen in the composer reached the first model request exactly once, stayed out of the visible message, and the conversation survived a reload.`, true);
 });
 
 selectedTest("SKILL-MISSING a selected skill removed from the native registry fails visibly without a model request", async ({ world, user, probe, evidence }) => {
-  expect(world.engine).toBe("v2");
   await openSkillMenu(user, world.skillName);
   await user.type("composer", ` ${world.prompt}`);
   // External fixture change after selection: no user action is replaced by API writes.
@@ -219,7 +208,6 @@ selectedTest("SKILL-MISSING a selected skill removed from the native registry fa
 });
 
 selectedTest("SKILL-SAME-NAME a person picks a skill whose renamed copy shares its name and the chosen skill is sent", async ({ world, user, probe, evidence, step }) => {
-  expect(world.engine).toBe("v2");
   const skillPath = `/workspace/${world.workspace.workspaceId}/opencode2/api/skill`;
   await step("given: a renamed copy of the skill in another folder carries the same name", async () => {
     await world.addRenamedCopy();
@@ -255,7 +243,6 @@ const selectedGlobalTest = spec.world(selectedGlobalSkillsWeb, {
 });
 
 selectedGlobalTest("SKILL-GLOBAL a person picks a skill from their global OpenCode skills folder and it is sent", async ({ world, user, evidence, step }) => {
-  expect(world.engine).toBe("v2");
   await step("given: the skill lives only in the person's global OpenCode skills folder", async () => {
     expect(world.skillDirectory.startsWith(world.workspacePath)).toBe(false);
     await openSkillMenu(user, world.skillName);

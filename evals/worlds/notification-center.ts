@@ -1,6 +1,5 @@
 import { browserScript } from "@openwork/cdp";
 import type { Seed } from "@openwork/env";
-import { archiveSessions } from "./session-shell.ts";
 
 /** Real provider-sync payload shape the app dispatches on `openwork-new-providers-available`. */
 export interface SyncedProvider {
@@ -10,12 +9,15 @@ export interface SyncedProvider {
 }
 
 /**
- * Archive-capable desktop plus the two background signals the notification
- * center contract distinguishes: a user-action confirmation (archive toast)
- * and a background event (provider sync landing in the center).
+ * A desktop with one open conversation plus the background signal the
+ * notification center keeps out of Activity: provider sync landing in the center.
  */
 export async function notificationCenter(seed: Seed) {
-  const world = await archiveSessions(seed);
+  const app = await seed.desktop({ name: "notification-center" });
+  const workspace = await seed.workspace(app, seed.tmpPath("notification-center"));
+  const [session] = await seed.sessions(app, ["Notification center chat"]);
+  if (!session) throw new Error("Notification center world did not create its conversation.");
+  const world = { app, workspace, session };
   return {
     ...world,
     /**

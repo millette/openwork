@@ -5,7 +5,7 @@ import { v2BuiltInBrowser } from "../worlds/v2-built-in-browser.ts";
 
 const test = spec.world(v2BuiltInBrowser, { timeout: 420_000,
   resources: { surfaces: ["desktop"], services: ["mock"], nativeReason: "The built-in browser uses Electron's native page view and browser approval UI." },
-  needs: { placement: "local", env: ["OPENWORK_EVAL_ENGINE"] },
+  needs: { placement: "local" },
 });
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -13,7 +13,6 @@ function record(value: unknown): value is Record<string, unknown> {
 }
 
 test("a v2 conversation opens its built-in browser with approval and keeps other conversations' tabs private", async ({ world, user, agent, probe, step, evidence }) => {
-  expect(world.engine).toBe("v2");
   const sessionId = world.session.sessionId;
   const native = `/workspace/${world.workspace.workspaceId}/opencode2/api`;
   let tabId = "";

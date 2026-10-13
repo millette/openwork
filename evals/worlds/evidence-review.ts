@@ -43,7 +43,6 @@ export async function reviewWorld(
     name,
     dir: `fixture-${index}`,
     gitSha,
-    engine: "v1",
     createdAt,
     closedAt: createdAt,
     outcome: "passed",

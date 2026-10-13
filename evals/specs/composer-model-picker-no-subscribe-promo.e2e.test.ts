@@ -256,15 +256,14 @@ const effortTest = spec.world(modelPickerEffortWeb, {
 });
 
 effortTest("MODEL-01 selected reasoning effort survives reload and reaches the native provider", async ({ world, user, probe, step, evidence }) => {
-  expect(world.engine).toBe("v2");
   const runtime = await world.runtimeFacts();
   expect(runtime.browser).toContain("HeadlessChrome");
   expect(runtime.electronBridge).toBe(false);
   evidence.recordJsonArtifact("MODEL-01 headless runtime", runtime);
   const prefix = `/workspace/${world.workspace.workspaceId}/opencode2/api`;
-  const status = await world.readNative("/experimental/engine-v2-preview/status");
+  const status = await world.readNative("/engine/status");
   expect(status.status).toBe(200);
-  expect(status.body).toMatchObject({ running: true, chatRouting: true });
+  expect(status.body).toMatchObject({ running: true });
   const catalog = await world.readNative(`${prefix}/model`);
   expect(catalog.status).toBe(200);
   expect(catalog.body).toMatchObject({ data: expect.arrayContaining([

@@ -100,12 +100,13 @@ async function resolveGateway(member: DenSession, orgId: string) {
   return { status: response.response.status, body: isRecord(response.body) ? response.body : {}, text: response.text };
 }
 
+/** The providers Den wrote into the worker's runtime config, which the engine mirrors. */
 async function runtimeProviders(resolution: Record<string, unknown>): Promise<Record<string, unknown>> {
   const url = stringAt(resolution, "url");
-  const token = stringAt(resolution, "clientToken");
-  if (!url || !token) throw new Error("The trusted gateway resolution omitted the worker URL or client token.");
-  const response = await fetch(`${url.replace(/\/$/, "")}/opencode/config`, {
-    headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), redirect: "error",
+  const token = stringAt(resolution, "hostToken");
+  if (!url || !token) throw new Error("The trusted gateway resolution omitted the worker URL or host token.");
+  const response = await fetch(`${url.replace(/\/$/, "")}/runtime-config/providers`, {
+    headers: { "x-openwork-host-token": token }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), redirect: "error",
   });
   const payload: unknown = await response.json();
   if (!response.ok || !isRecord(payload)) throw new Error(`Reading worker model inventory failed: HTTP ${response.status}`);

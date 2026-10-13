@@ -8,30 +8,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function sessionIdOf(value: unknown): string {
-  if (!isRecord(value) || typeof value.id !== "string") {
-    throw new Error(`Expected a created session: ${JSON.stringify(value)}`);
-  }
-  return value.id;
+function parts(message: Record<string, unknown> | undefined): Record<string, unknown>[] {
+  return message && Array.isArray(message.content) ? message.content.filter(isRecord) : [];
 }
 
-function replyText(value: unknown): string {
-  if (!isRecord(value) || !Array.isArray(value.parts)) return "";
-  return value.parts
-    .filter(isRecord)
-    .filter((part) => part.type === "text")
-    .map((part) => typeof part.text === "string" ? part.text : "")
-    .join("");
+/** The settled turn's final assistant text. */
+function replyText(transcript: Record<string, unknown>[]): string {
+  const reply = transcript.at(-1);
+  if (typeof reply?.text === "string") return reply.text;
+  return parts(reply).filter((part) => part.type === "text").map((part) => typeof part.text === "string" ? part.text : "").join("");
 }
 
-function completedContextOutput(value: unknown): string | null {
-  if (!Array.isArray(value)) return null;
-  for (const message of value) {
-    if (!isRecord(message) || !Array.isArray(message.parts)) continue;
-    for (const part of message.parts) {
-      if (!isRecord(part) || part.type !== "tool" || part.tool !== "openwork_context" || !isRecord(part.state)) continue;
-      if (part.state.status === "completed" && typeof part.state.output === "string") return part.state.output;
-    }
+/** OpenCode v2 keeps a completed tool's result as text content on its tool part. */
+function completedContextOutput(transcript: Record<string, unknown>[]): string | null {
+  for (const part of transcript.flatMap(parts)) {
+    if (part.type !== "tool" || (part.name ?? part.tool) !== "openwork_context" || !isRecord(part.state)) continue;
+    if (part.state.status !== "completed" || !Array.isArray(part.state.content)) continue;
+    const text = part.state.content.filter(isRecord).flatMap((entry) => entry.type === "text" && typeof entry.text === "string" ? [entry.text] : []).join("");
+    if (text) return text;
   }
   return null;
 }
@@ -42,22 +36,11 @@ function parseOutput(output: string): Record<string, unknown> {
   return parsed;
 }
 
-test("the in-app agent reads renderer context through openwork-server and gets an explicit result without a window", async ({ world, probe, step, evidence }) => {
+test("the in-app agent reads renderer context through openwork-server and gets an explicit result without a window", async ({ world, step, evidence }) => {
   await step("without a connected window the tool reports that no OpenWork window is connected and the turn completes", async () => {
-    const sessionId = sessionIdOf(await world.engine("POST", "/session", { title: "agent context without window" }));
-    const result = await world.engine("POST", `/session/${encodeURIComponent(sessionId)}/message`, {
-      model: { providerID: "mock", modelID: "mock" },
-      parts: [{ type: "text", text: "What is on my screen?" }],
-    });
-    const output = await probe.eventually(
-      async () => completedContextOutput(await world.engine("GET", `/session/${encodeURIComponent(sessionId)}/message`)),
-      {
-        within: 30_000,
-        label: "completed openwork_context tool without a window",
-        until: (value) => value !== null,
-      },
-    );
-    if (output === null) throw new Error("openwork_context did not complete");
+    const result = await world.ask("What is on my screen?", "agent context without window");
+    const output = completedContextOutput(result);
+    if (output === null) throw new Error(`openwork_context did not complete: ${JSON.stringify(result).slice(-800)}`);
     const parsed = parseOutput(output);
     const ui = isRecord(parsed.ui) ? parsed.ui : null;
     const error = ui && typeof ui.error === "string" ? ui.error : "";
@@ -88,21 +71,10 @@ test("the in-app agent reads renderer context through openwork-server and gets a
       availableAffordances: [],
     });
     try {
-      const sessionId = sessionIdOf(await world.engine("POST", "/session", { title: "agent context with window" }));
       const before = world.requests.length;
-      const result = await world.engine("POST", `/session/${encodeURIComponent(sessionId)}/message`, {
-        model: { providerID: "mock", modelID: "mock" },
-        parts: [{ type: "text", text: "What is on my screen?" }],
-      });
-      const output = await probe.eventually(
-        async () => completedContextOutput(await world.engine("GET", `/session/${encodeURIComponent(sessionId)}/message`)),
-        {
-          within: 30_000,
-          label: "completed openwork_context tool with a connected window",
-          until: (value) => value !== null,
-        },
-      );
-      if (output === null) throw new Error("openwork_context did not complete");
+      const result = await world.ask("What is on my screen?", "agent context with window");
+      const output = completedContextOutput(result);
+      if (output === null) throw new Error(`openwork_context did not complete: ${JSON.stringify(result).slice(-800)}`);
       const parsed = parseOutput(output);
       const context = isRecord(parsed.context) ? parsed.context : null;
       const conversations = context && isRecord(context.conversations) ? context.conversations : null;

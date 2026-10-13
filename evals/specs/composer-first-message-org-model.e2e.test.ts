@@ -19,11 +19,6 @@ function listField(value: unknown, field: string): unknown[] {
   return isRecord(value) && Array.isArray(value[field]) ? value[field] : [];
 }
 
-function listOf(value: unknown): unknown[] {
-  if (Array.isArray(value)) return value;
-  return listField(value, "items");
-}
-
 type Conversation = { workspacePath: string; sessionIds: string[]; userTurns: number; replies: number; errors: string[] };
 
 async function readConversation(desktopApi: (path: string) => Promise<{ status: number; body: unknown }>, reply: string): Promise<Conversation> {
@@ -31,20 +26,20 @@ async function readConversation(desktopApi: (path: string) => Promise<{ status: 
   const workspace = listField((await desktopApi("/workspaces")).body, "items").find(isRecord);
   if (!workspace || typeof workspace.id !== "string") return empty;
   const workspacePath = typeof workspace.path === "string" ? workspace.path : "";
-  const base = `/workspace/${workspace.id}/opencode`;
-  const directory = workspacePath ? `?directory=${encodeURIComponent(workspacePath)}` : "";
-  const sessionIds = listOf((await desktopApi(`${base}/session${directory}`)).body)
+  const base = `/workspace/${workspace.id}/opencode2/api`;
+  const sessionIds = listField((await desktopApi(`${base}/session`)).body, "data")
     .flatMap((session) => (isRecord(session) && typeof session.id === "string" ? [session.id] : []));
   let userTurns = 0;
   let replies = 0;
   const errors: string[] = [];
   for (const sessionId of sessionIds) {
-    for (const message of listOf((await desktopApi(`${base}/session/${sessionId}/message${directory}`)).body)) {
-      const info = isRecord(message) && isRecord(message.info) ? message.info : null;
-      if (info?.role === "user") userTurns += 1;
-      if (info?.role !== "assistant") continue;
-      if (isRecord(info.error)) errors.push(JSON.stringify(info.error).slice(0, 300));
-      const text = listField(message, "parts").map((part) => (isRecord(part) && typeof part.text === "string" ? part.text : "")).join("");
+    for (const message of listField((await desktopApi(`${base}/session/${sessionId}/message`)).body, "data")) {
+      if (!isRecord(message)) continue;
+      if (message.type === "user") userTurns += 1;
+      if (message.type !== "assistant") continue;
+      // A stopped step is recorded as an aborted error; it is not a failure.
+      if (isRecord(message.error) && message.error.type !== "aborted") errors.push(JSON.stringify(message.error).slice(0, 300));
+      const text = listField(message, "content").map((part) => (isRecord(part) && typeof part.text === "string" ? part.text : "")).join("");
       if (text.includes(reply)) replies += 1;
     }
   }
@@ -78,12 +73,12 @@ for (const sendCase of cases) {
         await new Promise((resolve) => setTimeout(resolve, sendCase.waitMs));
         // Regression guard: sign-in alone must have put the organization
         // provider into the running engine, before any workspace exists.
-        const engine = await probe.desktopApi("/opencode/provider");
-        const connected = listField(engine.body, "connected").filter((id): id is string => typeof id === "string");
+        const engine = await probe.desktopApi("/engine/status");
+        const connected = listField(engine.body, "mirroredProviderIds").filter((id): id is string => typeof id === "string");
         const workspaces = listField((await probe.desktopApi("/workspaces")).body, "items").length;
         evidence.recordAssertionEvidence(
           "Before the first message, the engine already serves the organization provider",
-          `${sendCase.waitMs} ms after the composer appeared, ${workspaces} workspaces: GET /opencode/provider → HTTP ${engine.status}; organization provider connected: ${connected.includes(world.providerId)}`,
+          `${sendCase.waitMs} ms after the composer appeared, ${workspaces} workspaces: GET /engine/status → HTTP ${engine.status}; organization provider in the engine: ${connected.includes(world.providerId)}`,
           engine.status === 200 && workspaces === 0 && connected.includes(world.providerId),
         );
         expect(workspaces).toBe(0);

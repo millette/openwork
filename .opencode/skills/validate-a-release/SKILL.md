@@ -55,7 +55,7 @@ so never launch an extracted bundle directly: `clone` gives each journey a
 throwaway APFS copy, and journey 3+4 clones internally.
 
 ```bash
-export OPENWORK_EVAL_ELECTRON_RESOURCES_PREPARED=1 OPENWORK_EVAL_ENGINE=v1 OPENWORK_EVAL_SURFACES_DIR=/tmp/ow-profiles-$V
+export OPENWORK_EVAL_ELECTRON_RESOURCES_PREPARED=1 OPENWORK_EVAL_SURFACES_DIR=/tmp/ow-profiles-$V
 clone() { rm -rf "$R/clone"; mkdir "$R/clone"; cp -Rc "$1" "$R/clone/"; }
 ```
 

@@ -28,7 +28,7 @@ async function configureModel(surface: App, modelUrl: string, gatewayUrl: string
     if (!info.baseUrl) return false;
     const root = info.baseUrl.replace(/\/$/, "");
     const headers = { Authorization: `Bearer ${info.ownerToken}` };
-    const response = await fetch(`${root}/workspace/${workspaceId}/opencode/global/health`, { headers, signal: AbortSignal.timeout(2500) });
+    const response = await fetch(`${root}/workspace/${workspaceId}/opencode2/api/info`, { headers, signal: AbortSignal.timeout(2500) });
     return response.ok;
   }, [surface.workspaceId]), { timeoutMs: 60_000, label: "owned engine reachable before the single fixture reload" });
   const reload = await evalIn(surface, browserScript(async (workspaceId) => {
@@ -51,17 +51,15 @@ async function configureModel(surface: App, modelUrl: string, gatewayUrl: string
     if (!info.baseUrl) return false;
     const root = info.baseUrl.replace(/\/$/, "");
     const headers = { Authorization: `Bearer ${info.ownerToken}` };
-    const configured = await fetch(`${root}/workspace/${workspaceId}/opencode/config`, { headers, signal: AbortSignal.timeout(2500) });
-    if (!configured.ok) return false;
-    const config: unknown = await configured.json();
-    if (!config || typeof config !== "object" || !("provider" in config) || !config.provider || typeof config.provider !== "object" || !("native-proof" in config.provider)) return false;
-    const provider = config.provider["native-proof"];
-    if (!provider || typeof provider !== "object" || !("models" in provider) || !provider.models || typeof provider.models !== "object" || !("proof" in provider.models)) return false;
-    const response = await fetch(`${root}/workspace/${workspaceId}/opencode/mcp`, { headers, signal: AbortSignal.timeout(2500) });
-    if (!response.ok) return false;
-    const value: unknown = await response.json();
-    return Boolean(value && typeof value === "object" && "openwork-cloud" in value && value["openwork-cloud"]
-      && typeof value["openwork-cloud"] === "object" && "status" in value["openwork-cloud"] && value["openwork-cloud"].status === "connected");
+    const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+    const items = async (path: string): Promise<Record<string, unknown>[]> => {
+      const response = await fetch(`${root}/workspace/${workspaceId}/opencode2/api/${path}`, { headers, signal: AbortSignal.timeout(2500) });
+      if (!response.ok) return [];
+      const value: unknown = await response.json();
+      return record(value) && Array.isArray(value.data) ? value.data.filter(record) : [];
+    };
+    if (!(await items("model")).some(model => model.providerID === "native-proof" && model.id === "proof")) return false;
+    return (await items("mcp")).some(entry => entry.name === "openwork-cloud" && record(entry.status) && entry.status.status === "connected");
   }, [surface.workspaceId]), { timeoutMs: 60_000, label: "effective fixture model and connected member gateway after one reload attempt" });
   await evalIn(surface, () => location.reload());
   await waitFor(surface, () => Boolean(window.__openworkControl), { timeoutMs: 60_000, label: "owned desktop reload" });

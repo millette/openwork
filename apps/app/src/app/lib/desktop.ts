@@ -375,7 +375,7 @@ async function desktopFetchThroughMain(
   options: DesktopFetchMainOptions = {},
 ): Promise<Response> {
   // Extract method/headers/body from either a Request object or the (input, init)
-  // pair. The OpenCode SDK calls fetch(request) (no init), so reading these only
+  // pair. The engine client calls fetch(request) (no init), so reading these only
   // from `init` would silently drop the Authorization header and the POST body
   // — the remote would then reject every request with "Invalid bearer token".
   let url: string;
@@ -666,7 +666,6 @@ const {
   readOpencodeConfig,
   writeOpencodeConfig,
   resetOpenworkState,
-  opencodeMcpAuth,
 } = desktopBridge;
 
 export {
@@ -706,5 +705,4 @@ export {
   readOpencodeConfig,
   writeOpencodeConfig,
   resetOpenworkState,
-  opencodeMcpAuth,
 };

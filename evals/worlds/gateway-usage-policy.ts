@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { allocateFreePort } from "@openwork/cdp";
-import { localMysqlIsRunning, queryDenDatabase, resolveEvalEngine, SkipError, type Place, type Seed } from "@openwork/env";
+import { localMysqlIsRunning, queryDenDatabase, SkipError, type Place, type Seed } from "@openwork/env";
 import { engineSessionProbe } from "@openwork/behaviors";
 import { startInferenceWitness } from "@openwork/labs";
 import { setTimeout as delay } from "node:timers/promises";
@@ -132,15 +132,14 @@ export async function gatewayUsagePolicy(seed: Seed, { place }: { place: Place }
     throw error;
   });
   const desktop = await seed.desktop({ den, as: "member", name: "gateway-usage-member", model: `${providerId}/${modelId}` });
-  const engine = resolveEvalEngine();
-  const native = engineSessionProbe({ engine, surface: desktop, workspaceId: desktop.workspaceId });
+  const native = engineSessionProbe({ surface: desktop, workspaceId: desktop.workspaceId });
   const resources = setup.move();
   return {
-    den, admin, desktop, member, control, memberId, controlId, adminId, orgId, providerId, modelId, engine,
+    den, admin, desktop, member, control, memberId, controlId, adminId, orgId, providerId, modelId,
     modelName: usageString(usageRecords(connected.models)[0]?.name),
     async nativeMessages(sessionId: string) {
       const messages = await native.messages(sessionId);
-      if (engine !== "v2" || !messages.ok) return messages;
+      if (!messages.ok) return messages;
       const body = usageRecord(messages.body);
       return { ...messages, data: messages.data.toReversed(), body: { ...body, data: usageRecords(body.data).toReversed() } };
     },

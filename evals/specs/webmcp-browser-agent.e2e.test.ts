@@ -66,10 +66,12 @@ test("a conversation signs in, uses site tools and page controls with consent, i
     return browserConversation(response.body);
   };
   const prompt = async (text: string) => {
-    const response = await agent.desktopApi(`${world.enginePath}/session/${sessionId}/prompt_async`, {
-      method: "POST", body: { model: { providerID: "browser-fixture", modelID: "fixture" }, parts: [{ type: "text", text }] },
+    const model = await agent.desktopApi(`${world.enginePath}/session/${sessionId}/model`, {
+      method: "POST", body: { model: { providerID: "browser-fixture", id: "fixture" } },
     });
-    expect(response.status).toBe(204);
+    expect(model.status).toBeLessThan(300);
+    const response = await agent.desktopApi(`${world.enginePath}/session/${sessionId}/prompt`, { method: "POST", body: { text } });
+    expect(response.status).toBe(200);
   };
 
   const listed = await step("One thread approval gates the first GET and then covers website discovery", async () => {

@@ -289,15 +289,25 @@ export async function cloudDraftRouting(seed: Seed) {
     mcp: { "openwork-cloud": { type: "remote", url: `${den.ref.apiUrl}/mcp/agent`, enabled: true, oauth: false,
       headers: { Authorization: `Bearer ${field(credentials, "token")}` } } },
   });
+  // The engine starts MCP connections in the background after configuration.
   const gateway = await seed.evalIn(app, browserScript(async (workspaceId) => {
     const base = "http://127.0.0.1:" + localStorage.getItem("openwork.server.port");
-    const response = await fetch(base + "/workspace/" + encodeURIComponent(workspaceId) + "/opencode/mcp", {
-      headers: { Authorization: "Bearer " + localStorage.getItem("openwork.server.token") },
-      signal: AbortSignal.timeout(30_000),
-    });
-    const value = await response.json();
-    return { status: response.status, gatewayStatus: typeof value?.["openwork-cloud"]?.status === "string" ? value["openwork-cloud"].status : null };
-  }, [workspace.workspaceId]), { awaitPromise: true, timeoutMs: 35_000 });
+    const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+    const deadline = Date.now() + 30_000;
+    let observed: { status: number; gatewayStatus: unknown } = { status: 0, gatewayStatus: null };
+    while (Date.now() < deadline) {
+      const response = await fetch(base + "/workspace/" + encodeURIComponent(workspaceId) + "/opencode2/api/mcp", {
+        headers: { Authorization: "Bearer " + localStorage.getItem("openwork.server.token") },
+        signal: AbortSignal.timeout(10_000),
+      });
+      const value: unknown = await response.json();
+      const entry = record(value) && Array.isArray(value.data) ? value.data.find(item => record(item) && item.name === "openwork-cloud") : undefined;
+      observed = { status: response.status, gatewayStatus: record(entry) && record(entry.status) ? entry.status.status : null };
+      if (observed.status === 200 && observed.gatewayStatus === "connected") break;
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    return observed;
+  }, [workspace.workspaceId]), { awaitPromise: true, timeoutMs: 45_000 });
   if (record(gateway).status !== 200 || record(gateway).gatewayStatus !== "connected") throw new Error(`Fixture gateway did not connect during engine configuration: ${JSON.stringify(gateway)}`);
   const session = await seed.session(app, { title: "Slack draft review" });
   const hostSetup = {

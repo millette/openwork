@@ -1,13 +1,12 @@
 import { createServer } from "node:http";
 import { catalogModelVariants } from "@openwork/types/cloud-model-fast";
-import { resolveEvalEngine, type Seed } from "@openwork/env";
+import type { Seed } from "@openwork/env";
 import { configureProvider } from "./chat.ts";
 import { close, isRecord, listen, readBody } from "./openwork-server-cli.ts";
 
 /** Real app and pinned engine; only the Anthropic HTTP endpoint is synthetic. */
 export async function anthropicEffort(seed: Seed) {
   await using setup = new AsyncDisposableStack();
-  const engine = resolveEvalEngine();
   const requests: { model: unknown; effort: unknown }[] = [];
   const prompt = "EFFORT_WITNESS: Reply with Effort received.";
   const providerId = "gateway-anthropic";
@@ -51,9 +50,9 @@ export async function anthropicEffort(seed: Seed) {
     options: { baseURL: `${url}/v1`, apiKey: "synthetic-anthropic-key" },
     models: { [modelId]: { name: "Claude Opus 5.5", reasoning: true,
       variants: catalogModelVariants(config, "@ai-sdk/anthropic") } },
-  } } }, engine);
+  } } });
   const session = await seed.session(app, { title: "Anthropic effort" });
   const resources = setup.move();
-  return { app, engine, session, prompt, providerId, modelId, requests: () => [...requests],
+  return { app, session, prompt, providerId, modelId, requests: () => [...requests],
     async [Symbol.asyncDispose]() { await resources.disposeAsync(); } };
 }

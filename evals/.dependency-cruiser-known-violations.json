@@ -1,19 +1,6 @@
 [
   {
     "type": "dependency",
-    "from": "specs/abandoned-question-waiting-indicator.e2e.test.ts",
-    "to": "@openwork/cdp",
-    "unresolvedTo": "@openwork/cdp",
-    "dependencyTypes": [
-      "unknown"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "specs-use-testkit-only"
-    }
-  },
-  {
-    "type": "dependency",
     "from": "specs/attachment-upload-loading-state.e2e.test.ts",
     "to": "@openwork/env",
     "unresolvedTo": "@openwork/env",
@@ -53,45 +40,6 @@
   },
   {
     "type": "dependency",
-    "from": "specs/bench-openwork-app-v1.e2e.test.ts",
-    "to": "@openwork/behaviors",
-    "unresolvedTo": "@openwork/behaviors",
-    "dependencyTypes": [
-      "unknown"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "specs-use-testkit-only"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "specs/bench-openwork-app-v1.e2e.test.ts",
-    "to": "@openwork/cdp",
-    "unresolvedTo": "@openwork/cdp",
-    "dependencyTypes": [
-      "unknown"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "specs-use-testkit-only"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "specs/bench-openwork-app-v1.e2e.test.ts",
-    "to": "@openwork/hosts",
-    "unresolvedTo": "@openwork/hosts",
-    "dependencyTypes": [
-      "unknown"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "specs-use-testkit-only"
-    }
-  },
-  {
-    "type": "dependency",
     "from": "specs/cloud-provider-local-credential-fallback.e2e.test.ts",
     "to": "@openwork/behaviors",
     "unresolvedTo": "@openwork/behaviors",
@@ -121,32 +69,6 @@
     "from": "specs/cross-server-handoff-atomic-commit.e2e.test.ts",
     "to": "@openwork/behaviors",
     "unresolvedTo": "@openwork/behaviors",
-    "dependencyTypes": [
-      "unknown"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "specs-use-testkit-only"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "specs/engine-v2-preview-flag.e2e.test.ts",
-    "to": "@openwork/behaviors",
-    "unresolvedTo": "@openwork/behaviors",
-    "dependencyTypes": [
-      "unknown"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "specs-use-testkit-only"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "specs/engine-v2-preview-flag.e2e.test.ts",
-    "to": "@openwork/hosts",
-    "unresolvedTo": "@openwork/hosts",
     "dependencyTypes": [
       "unknown"
     ],
@@ -745,19 +667,6 @@
     "from": "specs/workflow-run-previews.e2e.test.ts",
     "to": "@openwork/hosts",
     "unresolvedTo": "@openwork/hosts",
-    "dependencyTypes": [
-      "unknown"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "specs-use-testkit-only"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "specs/workspace-engine-upgrade.e2e.test.ts",
-    "to": "@openwork/behaviors",
-    "unresolvedTo": "@openwork/behaviors",
     "dependencyTypes": [
       "unknown"
     ],

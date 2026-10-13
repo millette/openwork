@@ -31,14 +31,14 @@ test("app boots with a control route and meaningful visible content", async ({ w
     await user.see("Run task");
     const workspaceId = /^#\/workspace\/([^/]+)\/session$/.exec(await probe.hash())?.[1];
     if (!workspaceId) throw new Error("The packaged app did not open its empty workspace route.");
-    const sessions = await probe.desktopApi(`/workspace/${workspaceId}/opencode/session`);
+    const sessions = await probe.desktopApi(`/workspace/${workspaceId}/opencode2/api/session`);
     expect(sessions.status).toBe(200);
-    expect(sessions.body).toEqual([]);
-    const tools = await world.packagedToolIds();
-    expect(tools).toEqual(expect.arrayContaining(["openwork_docs_search", "openwork_query"]));
+    expect(sessions.body).toMatchObject({ data: [] });
+    const plugins = await world.packagedPlugins();
+    expect(plugins).toEqual(expect.arrayContaining([{ id: "openwork.context", status: "active" }]));
     evidence.recordAssertionEvidence(
-      "The packaged engine loads OpenWork Connect canary tools",
-      "The automatically selected default workspace exposes openwork_docs_search and openwork_query through the real engine tool registry without test-driven workspace creation or engine startup. The engine resolves the shipped plugins outside app.asar without repository dependencies.",
+      "The packaged engine loads the shipped OpenWork plugin",
+      "The automatically selected default workspace reports OpenWork's context plugin (openwork_context, openwork_query and the browser tools) as active in the real engine's plugin registry, without test-driven workspace creation or engine startup. The engine resolves the shipped plugin outside app.asar without repository dependencies.",
       true,
     );
     evidence.recordAssertionEvidence(

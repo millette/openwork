@@ -194,27 +194,6 @@ test("managed responses preserve completion, partial work, and cancellation", { 
   }
   claim("Timeout and provider failures remain safe and distinguishable", "Real slow headers and JSON bodies produce upstream_timeout, malformed/unfinished JSON has separate categories, provider failures preserve HTTP status and Retry-After, and every case makes one generation attempt.");
 
-  world.witness.mode("engine-tool");
-  const engine = await world.bootEngine();
-  const session = await engine.engine("POST", "/session", { title: "Managed response tool task" });
-  if (!record(session) || typeof session.id !== "string") throw new Error("Missing engine session");
-  const result = await engine.engine("POST", `/session/${session.id}/message`, { model: { providerID: "openwork", modelID: model }, parts: [{ type: "text", text: "Read the managed inference fixture and finish." }] });
-  expect(result).not.toHaveProperty("info.error");
-  const transcript = await engine.engine("GET", `/session/${session.id}/message`);
-  const parts = Array.isArray(transcript) ? transcript.filter(record).flatMap((message) => Array.isArray(message.parts) ? message.parts.filter(record) : []) : [];
-  expect(parts.filter((part) => part.type === "tool")).toHaveLength(1);
-  expect(parts.find((part) => part.type === "tool")).toMatchObject({ tool: "read", state: { status: "completed", output: expect.stringContaining("Managed inference tool result") } });
-  expect(parts.filter((part) => part.type === "text" && part.text === "Complete café")).toHaveLength(1);
-  world.witness.mode("interrupted");
-  const interrupted = await engine.engine("POST", "/session", { title: "Interrupted managed task" });
-  if (!record(interrupted) || typeof interrupted.id !== "string") throw new Error("Missing interrupted session");
-  await engine.engine("POST", `/session/${interrupted.id}/message`, { model: { providerID: "openwork", modelID: model }, parts: [{ type: "text", text: "Keep the partial result." }] });
-  const saved = await engine.engine("GET", `/session/${interrupted.id}/message`);
-  expect(saved).toEqual(expect.arrayContaining([expect.objectContaining({ info: expect.objectContaining({ role: "assistant", error: expect.anything() }), parts: expect.arrayContaining([expect.objectContaining({ type: "text", text: "Partial" })]) })]));
-  const statuses = await engine.engine("GET", "/session/status");
-  expect(record(statuses) ? statuses[interrupted.id] : null).not.toMatchObject({ type: "busy" });
-  claim("The real engine persists successful tools and interrupted work", "With a baseline model configuration, OpenCode executes Read once and persists its result. Premature provider EOF persists a session error beside partial text, verified by transcript readback, and leaves the busy state. This is not catalog-delivery or billing proof.");
-
   world.witness.mode("success");
   const beforeInvalid = world.witness.requests.length;
   expect((await chat({}, AbortSignal.timeout(5000), "invalid-key")).status).toBe(401);

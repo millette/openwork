@@ -1,5 +1,5 @@
 import { expect } from "vitest";
-import { resolveEvalEngine, spec } from "@openwork/testkit";
+import { spec } from "@openwork/testkit";
 import { plusMenuWeb } from "../worlds/composer-plus-menu.ts";
 
 const test = spec.world(plusMenuWeb, {
@@ -17,7 +17,7 @@ const hiddenConnectorInstruction = /do not assume it is connected/;
 
 type Chips = { file: string; connector: string; pasted: string };
 
-test(`a member (${resolveEvalEngine()}): my sent message shows my file, connector and pasted text the way I composed them`, async ({ world, user, probe, step, evidence }) => {
+test("a member: my sent message shows my file, connector and pasted text the way I composed them", async ({ world, user, probe, step, evidence }) => {
   const [notes] = world.stagedFiles;
   if (!notes) throw new Error("The world staged no files.");
   const chips = async (scope: string): Promise<Chips> => {
@@ -122,7 +122,7 @@ test(`a member (${resolveEvalEngine()}): my sent message shows my file, connecto
 
 const secondLine = "Then list the open questions.";
 
-test(`a member (${resolveEvalEngine()}): a screenshot and long text I paste between two lines stay there in my message`, async ({ world, user, probe, step, evidence }) => {
+test("a member: a screenshot and long text I paste between two lines stay there in my message", async ({ world, user, probe, step, evidence }) => {
   // Reads the draft or the sent message in document order as named pieces.
   const order = async (scope: string) => {
     const selectors = ['[data-lexical-text="true"]', ".whitespace-pre-wrap", '[data-composer-badge="pasted"]', "img"];

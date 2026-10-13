@@ -297,8 +297,7 @@ test("opencode v2 injects providers at runtime without an engine reload", { time
   const rootDir = await mkdtemp(join(tmpdir(), "oc2-hot-inject-"));
   // The engine shares this machine's package cache on purpose: a cold cache makes
   // the first prompt install the provider SDK from the registry (minutes, network-
-  // bound, and the v2 prompt call blocks for all of it). Cold-cache catalog
-  // readiness is proven by engine-v2-preview-flag.e2e.test.ts from a fresh sandbox.
+  // bound, and the v2 prompt call blocks for all of it).
   const directory = join(rootDir, "workspace");
   await mkdir(directory);
   const baseConfig = join(rootDir, "opencode.json");

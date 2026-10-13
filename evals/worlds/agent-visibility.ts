@@ -1,17 +1,16 @@
 import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { resolveEvalEngine, type Seed } from "@openwork/env";
+import type { Seed } from "@openwork/env";
 import { configureProvider } from "./chat.ts";
 
 /**
  * A person asks a real research question in an ordinary workspace. The scripted
- * model follows the shape recorded from live v1/v2 sessions: one user message,
+ * model follows the shape recorded from live sessions: one user message,
  * then several model steps (read a file, run a slow command, hand work to a
  * helper agent whose own step takes a while), a short private thought, and the
- * answer. Tool names follow each engine: v1 `bash`/`task`, v2 `shell`/`subagent`.
+ * answer.
  */
 export async function agentVisibility(seed: Seed) {
-  const engine = resolveEvalEngine();
   const dir = seed.tmpPath("agent-visibility");
   await mkdir(dir, { recursive: true });
   const workspacePath = await realpath(dir);
@@ -31,7 +30,7 @@ export async function agentVisibility(seed: Seed) {
   const helperMarker = "Look through the error log and list anything about agents disappearing.";
   const answer = "People lose track of agents because the working line disappears between steps and the helper has no way back.";
   const helperAnswer = "Two log lines mention the helper row disappearing.";
-  const shell = engine === "v2" ? "shell" : "bash";
+  const shell = "shell";
   const followUp = "Also check whether the billing page has the same problem.";
 
   const app = await seed.appWeb({ name: "agent-visibility", workspacePath, mocks: {
@@ -49,10 +48,10 @@ export async function agentVisibility(seed: Seed) {
           description: "Check the app logs",
           timeout: 60_000,
         } },
-        { tool: engine === "v2" ? "subagent" : "task", arguments: {
+        { tool: "subagent", arguments: {
           description: "Check the error log",
           prompt: helperMarker,
-          ...(engine === "v2" ? { agent: "general", background: false } : { subagent_type: "general" }),
+          agent: "general", background: false,
         } },
       ],
     }, {
@@ -83,7 +82,7 @@ export async function agentVisibility(seed: Seed) {
       options: { baseURL: `${mock.url}/v1`, apiKey: "sk-visibility-fixture" },
       models: { [modelId]: { name: "Visibility model" } },
     } },
-  }, engine);
+  });
   const session = await seed.session(app, { title: "Agent visibility" });
   const releaseWhenAsked = async (marker: string) => {
     const deadline = Date.now() + 90_000;
@@ -100,7 +99,7 @@ export async function agentVisibility(seed: Seed) {
   };
 
   return {
-    app, workspace, session, engine, shell, prompt, answer, helperAnswer, followUp,
+    app, workspace, session, shell, prompt, answer, helperAnswer, followUp,
     requests: () => mock.agentRequests({ promptMarker: prompt }),
     helperRequests: () => mock.agentRequests({ promptMarker: helperMarker }),
     followUpRequests: () => mock.agentRequests({ promptMarker: followUp }),

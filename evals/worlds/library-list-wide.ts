@@ -43,9 +43,6 @@ export async function libraryListWide(seed: Seed) {
       OPENWORK_DEV_HEADLESS_DEN_API_TARGET: den.ref.apiUrl,
       VITE_DEN_BASE_URL: den.ref.webUrl,
       VITE_DEN_API_BASE_URL: "/api/den",
-      // The isolated runtime does not inherit executable overrides. Local proof can pin v1
-      // when the machine's default opencode is v2; CI keeps its normal provisioned binary.
-      ...(process.env.OPENWORK_OPENCODE_BIN ? { OPENWORK_OPENCODE_BIN: process.env.OPENWORK_OPENCODE_BIN } : {}),
     },
   });
   await seed.signIn(app, den.admin, "Library Owner");

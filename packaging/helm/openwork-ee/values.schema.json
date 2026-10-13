@@ -98,16 +98,6 @@
               ],
               "description": "Team roles: Members › Teams shows each team's role (Member, Admin or Custom) with one Change role action, and Members gets a Roles tab to see and create roles. Renders DEN_FEATURE_TEAM_ROLES."
             },
-            "engineV2Upgrade": {
-              "enum": [
-                "",
-                "true",
-                "false",
-                true,
-                false
-              ],
-              "description": "Desktop: upgrade prompt to OpenCode v2: Desktop members still on OpenCode v1 see a short notice offering to upgrade: their chats are copied to v2 with a backup, then OpenWork switches engines. Renders DEN_FEATURE_ENGINE_V2_UPGRADE."
-            },
             "remoteSessionEvents": {
               "enum": [
                 "",

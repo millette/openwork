@@ -308,16 +308,11 @@ test("GATEWAY-USAGE-01 admin policy blocks member Gateway calls until a reviewed
       within: 120_000, intervalMs: 500, label: "native engine records the submitted prompt and terminal assistant error",
       until: (value) => {
         if (!value.ok || !value.data.some((message) => message.parts.some((part) => part.text === prompt))) return false;
-        const body = Array.isArray(value.body) ? value.body : usageRecord(value.body).data;
-        return usageRecords(body).some((entry) => {
-          const info = usageRecord(entry.info ?? entry);
-          return (info.role === "assistant" || info.type === "assistant") && Boolean(info.error);
-        });
+        return usageRecords(usageRecord(value.body).data).some((info) => info.type === "assistant" && Boolean(info.error));
       },
     });
     expect(native.ok).toBe(true);
-    const nativeErrors = usageRecords(Array.isArray(native.body) ? native.body : usageRecord(native.body).data)
-      .map((entry) => usageRecord(entry.info ?? entry)).filter((info) => Boolean(info.error)).map((info) => info.error);
+    const nativeErrors = usageRecords(usageRecord(native.body).data).filter((info) => Boolean(info.error)).map((info) => info.error);
     evidence.recordAssertionEvidence("Native engine reports the Gateway rejection", JSON.stringify(nativeErrors).slice(0, 2000), nativeErrors.length > 0);
     expect(world.upstreamCount()).toBe(1);
     expect((await own()).buckets).toEqual(exhausted.buckets);
@@ -326,7 +321,7 @@ test("GATEWAY-USAGE-01 admin policy blocks member Gateway calls until a reviewed
     expect((await memberProbe.dom('[data-testid="gateway-usage-notice"]')).elements).toHaveLength(1);
     expect(await memberProbe.composer()).toMatchObject({ composerEditable: true, modelUnavailable: false });
     await capture("Desktop blocked composer", member, memberProbe, '[data-testid="gateway-usage-notice"]');
-    evidence.recordAssertionEvidence("Native composer reaches the real Gateway and own status corroborates the custom notice", JSON.stringify({ engine: world.engine, rejectedBefore: rejectedBefore.length, rejectedAfter: rejectedAfter.length, upstreamRequests: world.upstreamCount(), nativePromptRecorded: true, nativeAssistantErrorRecorded: true, usedMicroUsd: exhausted.buckets[0]?.usedMicroUsd }), true);
+    evidence.recordAssertionEvidence("Native composer reaches the real Gateway and own status corroborates the custom notice", JSON.stringify({ rejectedBefore: rejectedBefore.length, rejectedAfter: rejectedAfter.length, upstreamRequests: world.upstreamCount(), nativePromptRecorded: true, nativeAssistantErrorRecorded: true, usedMicroUsd: exhausted.buckets[0]?.usedMicroUsd }), true);
     await member.see({ role: "button", label: "Ask for $0.25 more" });
   });
 
@@ -417,23 +412,18 @@ test("GATEWAY-USAGE-01 admin policy blocks member Gateway calls until a reviewed
       within: 120_000, intervalMs: 500, label: "post-approval native assistant finishes successfully",
       until: (value) => {
         if (!value.ok || !value.data.some((message) => message.parts.some((part) => part.text === prompt))) return false;
-        const body = Array.isArray(value.body) ? value.body : usageRecord(value.body).data;
-        const last = usageRecords(body).at(-1);
-        if (!last) return false;
-        const info = usageRecord(last.info ?? last);
-        return (info.role === "assistant" || info.type === "assistant") && !info.error && info.finish === "stop"
+        const info = usageRecords(usageRecord(value.body).data).at(-1);
+        if (!info) return false;
+        return info.type === "assistant" && !info.error && info.finish === "stop"
           && typeof usageRecord(info.time).completed === "number"
           && value.data.at(-1)?.parts.some((part) => part.type === "text" && part.text === "Complete café") === true;
       },
     });
-    const body = Array.isArray(native.body) ? native.body : usageRecord(native.body).data;
-    const completed = usageRecords(body).at(-1);
-    if (!completed) throw new Error("Post-approval native assistant missing");
-    const info = usageRecord(completed.info ?? completed);
+    const info = usageRecords(usageRecord(native.body).data).at(-1);
+    if (!info) throw new Error("Post-approval native assistant missing");
     expect(info.error).toBeUndefined();
     expect(info.finish).toBe("stop");
-    if (world.engine === "v1") expect(info).toMatchObject({ providerID: world.providerId, modelID: world.modelId });
-    else expect(info.model).toMatchObject({ providerID: world.providerId, id: world.modelId });
+    expect(info.model).toMatchObject({ providerID: world.providerId, id: world.modelId });
     await member.see({ text: "Complete café" });
     await member.see("Run task", { timeoutMs: 30_000 });
     expect(await memberProbe.composer()).toMatchObject({ selectedModelLabel: world.modelName, composerEditable: true, modelUnavailable: false, draftText: "" });
@@ -461,7 +451,7 @@ test("GATEWAY-USAGE-01 admin policy blocks member Gateway calls until a reviewed
     expect(answer.elements).toHaveLength(1);
     expect(answer.elements[0]?.text).toContain("Complete café");
     await capture("Desktop native recovery completed", member, memberProbe, answerSelector);
-    evidence.recordAssertionEvidence("Den approval restores actual Desktop composer completion, not a direct HTTP bypass", JSON.stringify({ engine: world.engine, nativeAssistantCompleted: true, renderedAnswer: "Complete café", upstreamRequests: world.upstreamCount(), streamed: true, settledCostMicroUsd: 1_000_000, totalUsedMicroUsd: settled.buckets[0]?.usedMicroUsd, additionalRejections: 0 }), true);
+    evidence.recordAssertionEvidence("Den approval restores actual Desktop composer completion, not a direct HTTP bypass", JSON.stringify({ nativeAssistantCompleted: true, renderedAnswer: "Complete café", upstreamRequests: world.upstreamCount(), streamed: true, settledCostMicroUsd: 1_000_000, totalUsedMicroUsd: settled.buckets[0]?.usedMicroUsd, additionalRejections: 0 }), true);
   });
   await step("member requests another increase after exhaustion and Den adds to the existing extension", async () => {
     const previousHistory = await requests(world.member, "/me?view=history");

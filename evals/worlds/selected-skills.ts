@@ -1,5 +1,5 @@
 import { addInitScript, browserScript } from "@openwork/cdp";
-import { resolveEvalEngine, type Seed } from "@openwork/env";
+import type { Seed } from "@openwork/env";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join } from "node:path";
@@ -63,7 +63,6 @@ export function selectedGlobalSkillsWeb(seed: Seed) {
 }
 
 async function selectedSkillsIn(seed: Seed, folder: "workspace" | "global") {
-  const engine = resolveEvalEngine();
   const skillName = "selected-briefing";
   const skillBody = "When preparing a briefing, include the exact phrase AMBER_BODY_ONLY_7391. Keep the briefing concise.";
   const copyBody = "When preparing a briefing, include the exact phrase COPY_BODY_ONLY_5120. Keep the briefing long.";
@@ -79,7 +78,7 @@ async function selectedSkillsIn(seed: Seed, folder: "workspace" | "global") {
   await writeFile(join(skillDirectory, "SKILL.md"), `---\nname: ${skillName}\ndescription: Prepare a concise briefing.\n---\n${skillBody}\n`);
   const mock = seed.mock({ isolatedProcessEnv: true, agentWorkloads: [{
     promptMarker: prompt, latestUserTurn: true, finalReply: reply,
-    steps: engine === "v1" ? [{ tool: "skill", arguments: { name: skillName } }] : [],
+    steps: [],
   }] });
   const app = await seed.appWeb({ name: "selected-skills", workspacePath, mocks: { agent: mock }, ...(home ? { env: { HOME: home } } : {}) });
   const witness = app.mocks.agent;
@@ -92,7 +91,7 @@ async function selectedSkillsIn(seed: Seed, folder: "workspace" | "global") {
       window.fetch = async (input, init) => {
         const request = new Request(input instanceof Request ? input.clone() : input, init);
         const pathname = new URL(request.url).pathname;
-        if (request.method === "POST" && /\/(?:prompt|prompt_async|permission)$/.test(pathname)) {
+        if (request.method === "POST" && /\/(?:prompt|permission)$/.test(pathname)) {
           window.__selectedSkillPrompts?.push({ kind: pathname.endsWith("/permission") ? "permission" : "prompt", body: await request.clone().json() });
         }
         return original(input, init);
@@ -108,7 +107,7 @@ async function selectedSkillsIn(seed: Seed, folder: "workspace" | "global") {
         options: { baseURL: `http://127.0.0.1:${port}/v1`, apiKey: "synthetic-skill-key" },
         models: { [modelId]: { name: "Briefing witness", tool_call: true } },
       } },
-    }, engine);
+    });
     // Native catalog readiness is not renderer hydration. Do not create the
     // fixture session until the real composer has the arranged model.
     const ready = await seed.evalIn(app, async () => {
@@ -122,7 +121,7 @@ async function selectedSkillsIn(seed: Seed, folder: "workspace" | "global") {
     if (!ready) throw new Error("Selected-skill composer did not hydrate the fixture model");
     const session = await seed.session(app, { title: "Selected skill contract" });
     return {
-      app, workspace, session, engine, skillName, skillBody, prompt, reply, modelId, workspacePath, skillDirectory,
+      app, workspace, session, skillName, skillBody, prompt, reply, modelId, workspacePath, skillDirectory,
       removeSkill: () => rm(skillDirectory, { recursive: true }),
       copyBody,
       /** A renamed copy of the skill folder keeps its frontmatter name, as copying a skill does. */

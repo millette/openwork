@@ -6,7 +6,7 @@ import { engineParity } from "../worlds/engine-parity.ts";
 
 const test = spec.world(engineParity, { timeout: 420_000,
   resources: { surfaces: ["appWeb"], services: ["mock"] },
-  needs: { placement: "local", env: ["OPENWORK_EVAL_ENGINE"] },
+  needs: { placement: "local" },
 });
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -23,7 +23,6 @@ function toolOutputs(value: unknown): string[] {
 }
 
 test("V2-CONTEXT-ACTIVITY: query another chat and track a background child after its parent finishes", async ({ world, user, probe, step, evidence }) => {
-  expect(world.engine).toBe("v2");
   await probe.eventually(() => probe.composer(), { within: 60_000, label: "model ready", until: state => state.selectedModelLabel.includes("Big Pickle") && !state.modelUnavailable });
   await user.type("composer", world.prompt);
   await user.click("Run task");

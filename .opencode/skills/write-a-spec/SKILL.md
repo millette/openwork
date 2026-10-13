@@ -52,7 +52,7 @@ reviewer would open, not every step. Run it locally with
   runner. That is a unit test in disguise; the boundary ratchet rejects it.
 
 No UI does not mean no spec. A server, proxy, or protocol bug gets a
-browser-less world (see `evals/specs/session-title-recovery.test.ts`); the
+browser-less world (see `evals/specs/mcp-app-transport-fallback.test.ts`); the
 steps still read as one person's before → after.
 
 ## The proof shape

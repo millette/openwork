@@ -56,7 +56,6 @@ const MessageListContext = React.createContext<MessageListContextValue | null>(n
 
 interface MessageListProviderProps {
   client?: OpenworkServerClient
-  mcpAppEngine?: "v1" | "v2"
   readOnly?: boolean
   children: React.ReactNode
   workspaceId: string
@@ -96,7 +95,6 @@ export interface DispatchAction {
 
 export function MessageListProvider({
   client,
-  mcpAppEngine,
   readOnly = false,
   children,
   workspaceId,
@@ -182,8 +180,8 @@ export function MessageListProvider({
   const canStopSubagentSession = Boolean(onStopSubagentSession)
   const canResumeInterrupted = Boolean(onResumeInterrupted)
   const mcpAppOrigin = React.useMemo<McpAppOrigin | null>(
-    () => client ? { client, workspaceId, sessionId, readOnly, ...(mcpAppEngine ? { engine: mcpAppEngine } : {}) } : null,
-    [client, workspaceId, sessionId, readOnly, mcpAppEngine],
+    () => client ? { client, workspaceId, sessionId, readOnly } : null,
+    [client, workspaceId, sessionId, readOnly],
   )
   const value = React.useMemo(
     () => ({

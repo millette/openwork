@@ -9,7 +9,7 @@ import { engineParity } from "../worlds/engine-parity.ts";
 const test = spec.world(engineParity, {
   timeout: 420_000,
   resources: { surfaces: ["appWeb"], services: ["mock"] },
-  needs: { placement: "local", env: ["OPENWORK_EVAL_ENGINE"] },
+  needs: { placement: "local" },
 });
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -62,7 +62,6 @@ async function slowStartingMcp() {
 // changes; they never hold the engine's reads. Before this change every v2 read
 // except history waited for the in-flight connection setup.
 test("UPKEEP-01 v2: the conversation stays responsive while a new connection is still starting", async ({ world, user, probe, step, evidence }) => {
-  expect(world.engine).toBe("v2");
   await probe.eventually(() => probe.composer(), { within: 60_000, label: "starter model ready", until: (state) => state.selectedModelLabel.includes("Big Pickle") && !state.modelUnavailable });
   const listed = await world.request("/workspaces");
   const items = record(listed.body) && Array.isArray(listed.body.items) ? listed.body.items.filter(record) : [];

@@ -1,5 +1,5 @@
 import { addInitScript, browserScript } from "@openwork/cdp";
-import { resolveEvalEngine, type Seed } from "@openwork/env";
+import type { Seed } from "@openwork/env";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { configureProvider } from "./chat.ts";
@@ -45,7 +45,6 @@ const stagedFiles: StagedFile[] = [
  * The OS file chooser cannot be driven, so a picked file is staged instead.
  */
 export async function plusMenuWeb(seed: Seed) {
-  const engine = resolveEvalEngine();
   const skillPrompt = "Prepare a short briefing for the example account.";
   const skillReply = "The briefing is ready.";
   const attachPrompt = "Summarize the attached files.";
@@ -59,7 +58,7 @@ export async function plusMenuWeb(seed: Seed) {
   const mock = seed.mock({ isolatedProcessEnv: true, agentWorkloads: [
     {
       promptMarker: skillPrompt, latestUserTurn: true, finalReply: skillReply,
-      steps: engine === "v1" ? [{ tool: "skill", arguments: { name: skills[0].name } }] : [],
+      steps: [],
     },
     { promptMarker: attachPrompt, latestUserTurn: true, finalReply: attachReply, steps: [] },
   ] });
@@ -98,7 +97,7 @@ export async function plusMenuWeb(seed: Seed) {
         options: { baseURL: `http://127.0.0.1:${port}/v1`, apiKey: "synthetic-plus-menu-key" },
         models: { [modelId]: { name: "Plus menu witness", tool_call: true } },
       } },
-    }, engine);
+    });
     await seed.evalIn(app, browserScript(stubFileChooser, [stagedFiles]));
     // Native catalog readiness is not renderer hydration: wait for the composer model.
     const ready = await seed.evalIn(app, async () => {
@@ -112,7 +111,7 @@ export async function plusMenuWeb(seed: Seed) {
     if (!ready) throw new Error("Plus menu composer did not hydrate the fixture model");
     const session = await seed.session(app, { title: "Composer plus menu" });
     return {
-      app, workspace, session, engine,
+      app, workspace, session,
       skills, stagedFiles, skillPrompt, skillReply, attachPrompt, attachReply,
       /** Everything the engine sent the model provider, serialized per request. */
       providerBodies: () => providerRequests.map((request) => JSON.stringify(request)),

@@ -1,5 +1,5 @@
 import { mkdir, realpath } from "node:fs/promises";
-import { resolveEvalEngine, type Seed } from "@openwork/env";
+import type { Seed } from "@openwork/env";
 import { browserScript } from "@openwork/cdp";
 import { configureProvider } from "./chat.ts";
 
@@ -7,7 +7,6 @@ export async function taskActivityWeb(seed: Seed) {
   const path = seed.tmpPath("task-activity-web");
   await mkdir(path, { recursive: true });
   const workspacePath = await realpath(path);
-  const engine = resolveEvalEngine();
   const providerId = "activity-mock";
   const modelId = "activity-model";
   const marker = "ACTIVITY_CHILD_HOLD";
@@ -15,9 +14,9 @@ export async function taskActivityWeb(seed: Seed) {
   const app = await seed.appWeb({ name: "task-activity-web", workspacePath, mocks: {
     agent: seed.mock({ isolatedProcessEnv: true, agentWorkloads: [{
       promptMarker: prompt, latestUserTurn: true, finalReply: "Delegation finished.",
-      steps: [{ tool: engine === "v2" ? "subagent" : "task", arguments: {
+      steps: [{ tool: "subagent", arguments: {
         description: "Build isolated Azure repro", prompt: marker,
-        ...(engine === "v2" ? { agent: "general", background: false } : { subagent_type: "general" }),
+        agent: "general", background: false,
       } }],
     }, {
       promptMarker: marker, latestUserTurn: true, steps: [],
@@ -35,11 +34,11 @@ export async function taskActivityWeb(seed: Seed) {
       options: { baseURL: `${mock.url}/v1`, apiKey: "sk-activity-fixture" },
       models: { [modelId]: { name: "Activity model" } },
     } },
-  }, engine);
+  });
   const session = await seed.session(app, { title: "Delegated activity" });
-  const native = () => seed.evalIn(app, browserScript(async (workspaceId, sessionId, engine) => {
+  const native = () => seed.evalIn(app, browserScript(async (workspaceId, sessionId) => {
     const base = "http://127.0.0.1:" + localStorage.getItem("openwork.server.port")
-      + "/workspace/" + encodeURIComponent(workspaceId) + (engine === "v2" ? "/opencode2/api" : "/opencode");
+      + "/workspace/" + encodeURIComponent(workspaceId) + "/opencode2/api";
     const response = await fetch(base + "/session/" + encodeURIComponent(sessionId) + "/message?limit=50", {
       headers: { Authorization: "Bearer " + localStorage.getItem("openwork.server.token") },
     });
@@ -48,7 +47,7 @@ export async function taskActivityWeb(seed: Seed) {
     const data = raw && typeof raw === "object" && "data" in raw ? raw.data : raw;
     for (const message of Array.isArray(data) ? data : []) {
       for (const part of message.parts ?? message.content ?? []) {
-        if ((part.tool ?? part.name) !== (engine === "v2" ? "subagent" : "task")) continue;
+        if ((part.tool ?? part.name) !== "subagent") continue;
         const metadata = part.state?.metadata;
         let childId = metadata?.sessionId ?? metadata?.sessionID;
         if (!childId) {
@@ -69,7 +68,7 @@ export async function taskActivityWeb(seed: Seed) {
       }
     }
     return null;
-  }, [workspace.workspaceId, session.sessionId, engine]), { awaitPromise: true });
+  }, [workspace.workspaceId, session.sessionId]), { awaitPromise: true });
   return {
     app,
     workspace,

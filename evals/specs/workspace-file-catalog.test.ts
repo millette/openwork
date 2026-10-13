@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect } from "vitest";
 import { test } from "@openwork/testkit";
-import { bootServer, isRecord, stopChild } from "../worlds/openwork-server-cli.ts";
+import { bootServer, engineBinaryEnv, isRecord, stopChild } from "../worlds/openwork-server-cli.ts";
 
 // The file-session catalog is a public server journey used by the file browser
 // and sync clients. Exercise real OS permissions and HTTP, without mocking fs.
@@ -19,7 +19,7 @@ test("workspace catalog preserves readable siblings and reports permission gaps"
   await mkdir(home);
   const inherited = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("OPENWORK_") && !key.startsWith("OPENCODE")));
   const headers = { authorization: "Bearer catalog-test-token", "content-type": "application/json" };
-  const booted = bootServer({ ...inherited, HOME: home, XDG_CONFIG_HOME: join(home, ".config"), XDG_DATA_HOME: join(home, ".local/share"), OPENWORK_MANAGE_OPENCODE: "0" }, "catalog-test-token", workspace, () => {});
+  const booted = bootServer({ ...inherited, HOME: home, XDG_CONFIG_HOME: join(home, ".config"), XDG_DATA_HOME: join(home, ".local/share"), ...engineBinaryEnv() }, "catalog-test-token", workspace, () => {});
   try {
     const base = await booted.listening;
     const request = (path: string, body?: unknown) => fetch(`${base}${path}`, { headers, method: body === undefined ? "GET" : "POST", body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(10_000) });
@@ -103,7 +103,7 @@ test("healthy workspace catalog preserves symlink boundaries, pagination, and di
   await symlink(join(outside, "outside-only.txt"), join(workspace, "external-file-link"), "file");
   const inherited = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("OPENWORK_") && !key.startsWith("OPENCODE")));
   const headers = { authorization: "Bearer catalog-compatibility-token", "content-type": "application/json" };
-  const booted = bootServer({ ...inherited, HOME: home, XDG_CONFIG_HOME: join(home, ".config"), XDG_DATA_HOME: join(home, ".local/share"), OPENWORK_MANAGE_OPENCODE: "0" }, "catalog-compatibility-token", workspace, () => {});
+  const booted = bootServer({ ...inherited, HOME: home, XDG_CONFIG_HOME: join(home, ".config"), XDG_DATA_HOME: join(home, ".local/share"), ...engineBinaryEnv() }, "catalog-compatibility-token", workspace, () => {});
   try {
     const base = await booted.listening;
     const request = (path: string, body?: unknown) => fetch(`${base}${path}`, { headers, method: body === undefined ? "GET" : "POST", body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(10_000) });

@@ -1,5 +1,5 @@
 import { browserScript, type Surface } from "@openwork/cdp";
-import { resolveEvalEngine, type Seed } from "@openwork/env";
+import type { Seed } from "@openwork/env";
 import { configureProvider } from "./chat.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -58,7 +58,7 @@ async function queuedTransport(app: Surface, sessionId: string, hold: boolean) {
     socket.addEventListener("error", () => { clearTimeout(timer); reject(new Error("Queue witness connection failed")); }, { once: true });
   });
   await command("Fetch.enable", { patterns: [
-    { urlPattern: `*/session/${encodeURIComponent(sessionId)}/prompt_async*`, requestStage: "Request" },
+    { urlPattern: `*/session/${encodeURIComponent(sessionId)}/prompt*`, requestStage: "Request" },
   ] });
   return {
     read() {
@@ -151,24 +151,21 @@ export async function queuedFollowUps(seed: Seed) {
   const session = await seed.session(app, { title: "Release build" });
   return { app, workspace, session, running, queued,
     observeQueuedTransport: (hold: boolean) => queuedTransport(app, session.sessionId, hold),
-    engineMessageCounts: () => seed.evalIn(app, browserScript(async (workspaceId, sessionId, marker, engine) => {
+    engineMessageCounts: () => seed.evalIn(app, browserScript(async (workspaceId, sessionId, marker) => {
       const base = "http://127.0.0.1:" + localStorage.getItem("openwork.server.port");
-      const mount = engine === "v2" ? "/opencode2/api" : "/opencode";
-      const response = await fetch(base + "/workspace/" + encodeURIComponent(workspaceId) + mount
+      const response = await fetch(base + "/workspace/" + encodeURIComponent(workspaceId) + "/opencode2/api"
         + "/session/" + encodeURIComponent(sessionId) + "/message", {
         headers: { Authorization: "Bearer " + localStorage.getItem("openwork.server.token") },
       });
       if (!response.ok) throw new Error("Native message count failed: HTTP " + response.status);
       const body: unknown = await response.json();
-      if (!Array.isArray(body)) throw new Error("Expected native message array");
-      const users = body.filter((entry) => typeof entry === "object" && entry !== null
-        && "info" in entry && typeof entry.info === "object" && entry.info !== null
-        && "role" in entry.info && entry.info.role === "user");
-      const matching = users.filter((entry) => Array.isArray(entry.parts) && entry.parts.some((part: unknown) =>
-        typeof part === "object" && part !== null && "type" in part && part.type === "text"
-        && "text" in part && typeof part.text === "string" && part.text.includes(marker)));
+      const items: unknown = typeof body === "object" && body !== null && "data" in body ? body.data : null;
+      if (!Array.isArray(items)) throw new Error("Expected native message list");
+      const users = items.filter((entry) => typeof entry === "object" && entry !== null
+        && "type" in entry && entry.type === "user");
+      const matching = users.filter((entry) => "text" in entry && typeof entry.text === "string" && entry.text.includes(marker));
       return { users: users.length, queued: matching.length };
-    }, [workspace.workspaceId, session.sessionId, queued.prompt, resolveEvalEngine()]), { awaitPromise: true }),
+    }, [workspace.workspaceId, session.sessionId, queued.prompt]), { awaitPromise: true }),
     releaseRunningReply: () => mock.releaseAgentReply(running.prompt, 1),
     releaseQueuedReply: () => mock.releaseAgentReply(queued.prompt, 1),
     modelRequests: (promptMarker: string) => mock.agentRequests({ promptMarker }) };

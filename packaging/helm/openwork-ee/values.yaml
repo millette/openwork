@@ -34,7 +34,6 @@ config:
     automationCalendar: ""  # default off · Members see a Calendar in the desktop app with their Automations next to meetings from their connected Google or Outlook calendar.
     permissions: ""         # default off · Organization admins choose what members, admins and each team can do, instead of the fixed Member and Admin defaults.
     teamRoles: ""           # default off · Members › Teams shows each team's role (Member, Admin or Custom) with one Change role action, and Members gets a Roles tab to see and create roles.
-    engineV2Upgrade: ""     # default off · Desktop members still on OpenCode v1 see a short notice offering to upgrade: their chats are copied to v2 with a backup, then OpenWork switches engines.
     remoteSessionEvents: "" # default off · MCP clients can subscribe to changes in their remote session receipts and read the current state after reconnecting.
   # END GENERATED features
   tenancy:

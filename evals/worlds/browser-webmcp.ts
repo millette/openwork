@@ -37,15 +37,15 @@ export async function browserWebMcpWorld(seed: Seed) {
     const fixture = stack.use(await startBrowserFixture(base.app));
     const origin = fixture.origin;
     await configureBrowserFixtureModel(base.app, workspacePath, origin);
-    const enginePath = `/workspace/${base.workspace.workspaceId}/opencode`;
-    await seed.evalIn(base.app, browserScript(async (disposePath) => {
+    const enginePath = `/workspace/${base.workspace.workspaceId}/opencode2/api`;
+    await seed.evalIn(base.app, browserScript(async (reloadPath) => {
       const info = await window.__OPENWORK_ELECTRON__.invokeDesktop('openworkServerInfo');
-      const response = await fetch(info.baseUrl + disposePath, {
+      const response = await fetch(info.baseUrl + reloadPath, {
         method: 'POST', headers: { Authorization: 'Bearer ' + info.clientToken },
         signal: AbortSignal.timeout(30000),
       });
       if (!response.ok) throw new Error('Fixture model reload failed');
-    }, [`${enginePath}/instance/dispose`]), { awaitPromise: true, timeoutMs: 35_000 });
+    }, [`/workspace/${base.workspace.workspaceId}/engine/reload`]), { awaitPromise: true, timeoutMs: 35_000 });
     // Leave the browser unmounted: the discovery turn must request its first tab.
     return { ...base, origin, enginePath, async [Symbol.asyncDispose]() { await stack.disposeAsync(); } };
   } catch (error) { await stack.disposeAsync(); throw error; }

@@ -30,7 +30,7 @@ test("Anthropic gateway effort choices reach the provider and survive reload", a
     await user.see("Run task", { timeoutMs: 30_000 });
     expect(world.requests().at(-1)).toEqual({ model: world.modelId, effort: "max" });
   }
-  evidence.recordJsonArtifact("Anthropic wire requests", { engine: world.engine, requests: world.requests() });
+  evidence.recordJsonArtifact("Anthropic wire requests", { requests: world.requests() });
   evidence.recordAssertionEvidence("Anthropic catalog effort survives picker, engine, and reload",
     "An opaque gateway model ID exposes only the advertised effort levels. Selecting Max sends output_config.effort=max through the pinned native engine, and the same value is sent after reload. The Anthropic endpoint is synthetic; app and engine are real.", true);
 });

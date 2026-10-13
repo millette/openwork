@@ -11,10 +11,12 @@ import {
   sendJson,
   sendMockError,
   sendStream,
+  type EngineModel,
   type ManagedOpenworkServer,
 } from "./openwork-server-cli.ts";
 
 export const MOCK_REPLY = "MOCK OK";
+export const MOCK_MODEL: EngineModel = { providerID: "mock", id: "mock" };
 
 export type AgentUiContextProviderRequest = {
   model: string;
@@ -39,7 +41,8 @@ export interface AgentUiContextWorld extends AsyncDisposable {
   hostToken: string;
   workspaceId: string;
   requests: AgentUiContextProviderRequest[];
-  engine(method: string, path: string, body?: unknown): Promise<unknown>;
+  /** Creates a session and sends one prompt; resolves with the native transcript once the turn settles. */
+  ask(text: string, title: string): Promise<Record<string, unknown>[]>;
   output(): string;
   attachWindow(context: Record<string, unknown>): Promise<FakeWindow>;
 }
@@ -215,7 +218,7 @@ export async function agentUiContext(seed: Seed): Promise<AgentUiContextWorld> {
       hostToken: `${token}-host`,
       workspaceId: server.workspaceId,
       requests,
-      engine: server.engine,
+      ask: async (text, title) => server.prompt(await server.createSession(title), MOCK_MODEL, text),
       output: () => output,
       attachWindow,
       [Symbol.asyncDispose]: dispose,

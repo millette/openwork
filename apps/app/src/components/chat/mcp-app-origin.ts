@@ -6,7 +6,6 @@ export type McpAppOrigin = {
   client: OpenworkServerClient;
   workspaceId: string;
   sessionId: string | null;
-  engine?: "v1" | "v2";
   readOnly: boolean;
 };
 
@@ -41,7 +40,6 @@ export function createMcpAppActions(
       const request = {
         launchId: app.launchId,
         sessionId: origin.sessionId,
-        ...(origin.engine ? { engine: origin.engine } : {}),
         serverName: app.serverName,
         resourceUri: app.resourceUri,
         name,

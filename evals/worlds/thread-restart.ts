@@ -2,7 +2,7 @@ import { connect } from "node:net";
 import { evalIn, quitDesktop, readComposerState } from "@openwork/behaviors";
 import { addInitScript, browserScript } from "@openwork/cdp";
 import type { Surface } from "@openwork/cdp";
-import { mcpMock, resolveEvalEngine } from "@openwork/env";
+import { mcpMock } from "@openwork/env";
 import type { MockHandle, Place, Seed } from "@openwork/env";
 import { desktop as launchDesktop } from "@openwork/hosts";
 import type { DesktopHandle } from "@openwork/hosts";
@@ -80,7 +80,7 @@ export async function slowUncappedHistoryReads(app: Surface, workspaceId: string
   const script = await addInitScript(app.client, browserScript((workspaceId, sessionId, delayMs) => {
     if (window.top !== window || window.__openworkSlowHistoryFault) return;
     const paths = ["workspace", "w"].map((mount) =>
-      `/${mount}/${encodeURIComponent(workspaceId)}/opencode/session/${encodeURIComponent(sessionId)}/message`);
+      `/${mount}/${encodeURIComponent(workspaceId)}/opencode2/api/session/${encodeURIComponent(sessionId)}/message`);
     const originalFetch = window.fetch;
     const state = { delayed: 0, bounded: 0 };
     const wrappedFetch: typeof window.fetch = async (...args) => {
@@ -152,12 +152,11 @@ export async function assertWitnessModel(app: Surface): Promise<void> {
 
 export async function restartedThreadWorld(seed: Seed, ctx: { place: Place }) {
   if (ctx.place.kind !== "local") throw new Error("This world kills and relaunches the desktop process group on the host running it; run it on the local lane.");
-  const engine = resolveEvalEngine();
   const prompts = restartedThreadPrompts;
   const workloads: MockAgentWorkload[] = [
     {
       promptMarker: prompts.interrupted, latestUserTurn: true, finalReply: prompts.interruptedReply,
-      steps: [{ tool: engine === "v2" ? "shell" : "bash", arguments: {
+      steps: [{ tool: "shell", arguments: {
         command: "sleep 120", description: "Wait for the report input", timeout: 180_000,
       } }],
     },
@@ -200,7 +199,7 @@ export async function restartedThreadWorld(seed: Seed, ctx: { place: Place }) {
   if (!session) throw new Error(`Session creation did not settle: ${lastSessionError instanceof Error ? lastSessionError.message : String(lastSessionError)}`);
   let restarted: DesktopHandle | null = null;
   return {
-    engine, mock, workspace, workspacePath, session, prompts, modelName: restartedThreadModelName,
+    mock, workspace, workspacePath, session, prompts, modelName: restartedThreadModelName,
     get app(): Surface { return app; },
     /**
      * Take the whole desktop away — `kill` is a crash or force quit (SIGKILL to

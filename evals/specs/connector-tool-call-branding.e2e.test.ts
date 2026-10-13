@@ -42,7 +42,7 @@ test("connector-backed tool calls show first-class branding and human-readable l
     // Scope result inspection to this action so an assistant repeating the
     // same text cannot make missing capture pass.
     const savedResult = async () => (await inspect()).resultText;
-    if (world.engine === "v2") expect(await savedResult()).toContain(world.proof);
+    expect(await savedResult()).toContain(world.proof);
     await user.screenshot();
     await user.reload();
     await user.see({ text: /^Listed channels(?: · Slack)?$/ }, { timeoutMs: 30_000 });
@@ -52,10 +52,10 @@ test("connector-backed tool calls show first-class branding and human-readable l
     await user.hover({ text: /^Listed channels(?: · Slack)?$/ });
     await user.click({ role: "button", label: /^Show technical details for Listed channels/ });
     await user.see({ text: /"limit":\s*3/ });
-    if (world.engine === "v2") expect(await savedResult()).toContain(world.proof);
+    expect(await savedResult()).toContain(world.proof);
     await user.screenshot();
     await user.click({ role: "button", label: /^Hide technical details for Listed channels/ });
-    evidence.recordAssertionEvidence("inspect the same action after reload", `One branded Slack row; limit 3${world.engine === "v2" ? ` and the captured result ${world.proof}` : ""} remain under technical details`, true);
+    evidence.recordAssertionEvidence("inspect the same action after reload", `One branded Slack row; limit 3 and the captured result ${world.proof} remain under technical details`, true);
   });
 
   await step("before: a note has not yet been created", async () => {
@@ -68,7 +68,7 @@ test("connector-backed tool calls show first-class branding and human-readable l
     await user.type("composer", world.mutationPrompt);
     await user.click("Run task");
     await user.see({ text: /(?:Creating|Created) note/ }, { timeoutMs: 60_000 });
-    if (world.engine === "v2") await user.notSee({ text: /Tool activity|Task step|Completed with errors/ });
+    await user.notSee({ text: /Tool activity|Task step|Completed with errors/ });
     evidence.recordAssertionEvidence("creation in progress", "Creating or Created note is visible, not Tool activity", true);
     await user.screenshot();
   });
@@ -90,7 +90,7 @@ test("connector-backed tool calls show first-class branding and human-readable l
     await user.type("composer", world.failurePrompt);
     await user.click("Run task");
     await user.see({ role: "button", label: /technical details for (?:Reading history|Couldn.t read history)/ }, { timeoutMs: 60_000 });
-    if (world.engine === "v2") await user.notSee({ text: /Completed with errors|Tool activity/ });
+    await user.notSee({ text: /Completed with errors|Tool activity/ });
     await user.see("Run task");
     await user.see({ text: "The history lookup failed." });
     await user.notSee({ role: "button", label: /^Show technical details for Read history/ });
@@ -100,8 +100,7 @@ test("connector-backed tool calls show first-class branding and human-readable l
     evidence.recordAssertionEvidence("history lookup failed without claiming success", "read_history received limit 3; the reply says the lookup failed", true);
     await user.screenshot();
     await user.reload();
-    if (world.engine === "v2") await user.notSee({ text: /Completed with errors|Tool activity/ });
-    else await user.see({ role: "button", label: /technical details for Couldn.t read history/ }, { timeoutMs: 30_000 });
+    await user.notSee({ text: /Completed with errors|Tool activity/ });
     await user.see({ text: "The history lookup failed." });
     await user.notSee({ role: "button", label: /^Show technical details for Read history/ });
     await user.notSee({ role: "button", label: /^Ran(?:\s|\.|[0-9]|$)/ });

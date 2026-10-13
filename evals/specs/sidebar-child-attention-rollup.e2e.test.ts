@@ -76,29 +76,27 @@ const heldToolTest = spec.world(parentChildHeldToolWorld, { timeout: 600_000 });
 heldToolTest("an idle parent's sidebar spinner and descendantActivity follow a real child's held MCP tool", { timeout: 240_000 }, async ({ world, user, agent, probe, step }) => {
   const parentId = world.session.sessionId;
   const sinceIso = new Date().toISOString();
-  const v2 = world.engine === "v2";
   const record = (value: unknown): Record<string, unknown> => isRecord(value) ? value : {};
   const records = (value: unknown): Record<string, unknown>[] => Array.isArray(value) ? value.filter(isRecord) : [];
   const read = async (path: string) => {
     const response = await probe.desktopApi(world.mount + path);
     expect(response.status, path).toBe(200);
-    return v2 ? record(response.body).data : response.body;
+    return record(response.body).data;
   };
-  const transcript = async (id: string) => records(await read(`/session/${encodeURIComponent(id)}/${v2 ? "context" : "message?limit=50"}`))
+  const transcript = async (id: string) => records(await read(`/session/${encodeURIComponent(id)}/context`))
     .flatMap((message) => {
-      const info = v2 ? message : record(message.info);
-      if (info[v2 ? "type" : "role"] !== "assistant") return [];
-      const parts = records(v2 ? message.content : message.parts);
+      if (message.type !== "assistant") return [];
+      const parts = records(message.content);
       return [{
-        id: info.id, completed: typeof record(info.time).completed === "number",
+        id: message.id, completed: typeof record(message.time).completed === "number",
         text: parts.filter((part) => part.type === "text").map((part) => part.text).join(""),
         tools: parts.filter((part) => part.type === "tool").map((part) => ({
-          name: part[v2 ? "name" : "tool"], status: record(part.state).status, metadata: record(part.state).metadata,
+          name: part.name, status: record(part.state).status, metadata: record(part.state).metadata,
         })),
       }];
     });
   const nativeStatuses = async () => {
-    const statuses = await read(v2 ? "/session/active" : "/session/status");
+    const statuses = await read("/session/active");
     expect(isRecord(statuses) && !Array.isArray(statuses)).toBe(true);
     return record(statuses);
   };
@@ -133,7 +131,7 @@ heldToolTest("an idle parent's sidebar spinner and descendantActivity follow a r
     });
     expect((await transcript(parentId)).flatMap((message) => message.tools)).toContainEqual({
       name: world.delegationTool, status: "completed",
-      metadata: expect.objectContaining(v2 ? { sessionID: id } : { sessionId: id }),
+      metadata: expect.objectContaining({ sessionID: id }),
     });
     const parent = await probe.eventually(listedParent, {
       within: 15_000, label: "the idle parent initially has no busy descendants",
@@ -146,10 +144,10 @@ heldToolTest("an idle parent's sidebar spinner and descendantActivity follow a r
   const parentBefore = await transcript(parentId);
 
   await step("only the resumed child runs while its idle parent shows descendant work", async () => {
-    const sent = await agent.desktopApi(`${world.mount}/session/${encodeURIComponent(childId)}/${v2 ? "prompt" : "prompt_async"}`, {
+    const sent = await agent.desktopApi(`${world.mount}/session/${encodeURIComponent(childId)}/prompt`, {
       method: "POST", body: world.promptBody,
     });
-    expect(sent.status).toBe(v2 ? 200 : 204);
+    expect(sent.status).toBe(200);
     await probe.eventually(world.heldTool, {
       within: 45_000, label: "the child's actual MCP response is held at the witness",
       until: (state) => state.held === 1,
@@ -162,7 +160,7 @@ heldToolTest("an idle parent's sidebar spinner and descendantActivity follow a r
     }), {
       within: 15_000, label: "native child tool activity rolls up without making the parent engine busy",
       until: ({ statuses, messages, parent, indicator }) => statusOf(statuses, parentId) === "idle"
-        && statusOf(statuses, childId) === (v2 ? "running" : "busy")
+        && statusOf(statuses, childId) === "running"
         && messages.some((message) => message.tools.some((tool) => tool.name === world.toolName && tool.status === "running"))
         && parent?.working === true && record(parent.descendantActivity).busy === 1 && indicator.spinner,
     });

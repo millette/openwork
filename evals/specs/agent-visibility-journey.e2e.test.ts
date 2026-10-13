@@ -1,5 +1,5 @@
 import { expect } from "vitest";
-import { resolveEvalEngine, spec } from "@openwork/testkit";
+import { spec } from "@openwork/testkit";
 import { agentVisibility } from "../worlds/agent-visibility.ts";
 
 const test = spec.world(agentVisibility, {
@@ -9,7 +9,7 @@ const test = spec.world(agentVisibility, {
 
 type Sample = { at: number; working: string | null; liveHeight: number | null; helperRow: boolean };
 
-test(`AGENT-VIS-01 ${resolveEvalEngine()}: a person asks a research question and can always tell the agent is still working`, async ({ world, user, probe, step, evidence }) => {
+test("AGENT-VIS-01: a person asks a research question and can always tell the agent is still working", async ({ world, user, probe, step, evidence }) => {
   const samples: Sample[] = [];
   // TODO(primitive): no probe reads "is any Working line visible" plus the live-steps height
   // in one glance; sampling both together is the only way to catch a flicker between steps.
@@ -106,7 +106,7 @@ test(`AGENT-VIS-01 ${resolveEvalEngine()}: a person asks a research question and
   await step("the agent really did what the person watched: read, command, helper", async () => {
     const tools = (await world.requests()).filter((request) => request.kind === "tool").map((request) => request.toolName);
     const helperTools = (await world.helperRequests()).filter((request) => request.kind === "tool").map((request) => request.toolName);
-    const expected = ["read", world.shell, world.engine === "v2" ? "subagent" : "task"];
+    const expected = ["read", world.shell, "subagent"];
     evidence.recordAssertionEvidence("Model calls match the screen", `parent: ${tools.join(" → ")}; helper: ${helperTools.join(" → ")}`,
       JSON.stringify(tools) === JSON.stringify(expected) && helperTools.length === 1);
     expect(tools).toEqual(expected);
@@ -114,7 +114,7 @@ test(`AGENT-VIS-01 ${resolveEvalEngine()}: a person asks a research question and
   });
 });
 
-test(`AGENT-VIS-02 ${resolveEvalEngine()}: a person follows up while a helper works, then stops, and nothing they typed is lost or sent behind their back`, async ({ world, user, probe, step, evidence }) => {
+test("AGENT-VIS-02: a person follows up while a helper works, then stops, and nothing they typed is lost or sent behind their back", async ({ world, user, probe, step, evidence }) => {
   await step("the person starts the research and the helper begins working", async () => {
     await user.type("composer", world.prompt);
     await user.click("Run task");

@@ -4,7 +4,7 @@ import { appConnectionCard, appTitle, connectionName, dailyActiveUsers, dauToolN
 
 const test = spec.world(appConnectionCard, {
   resources: { surfaces: ["appWeb"], services: ["den", "mock"] },
-  needs: { commands: ["bun", "pnpm", "opencode"] }, timeout: 600_000,
+  needs: { commands: ["bun", "pnpm"] }, timeout: 600_000,
 });
 
 test("an owner whose App's PostHog connection breaks sees how to fix the connection, not a raw error", async ({ world, agent, user, step, evidence }) => {

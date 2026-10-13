@@ -115,7 +115,7 @@ jobs:
           OPENWORK_EVIDENCE_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
           OPENWORK_PREVIEW_GITHUB_TOKEN: ${{ github.token }}
           PROOF_SPEC: ${{ matrix.spec }}
-        run: node evals/bin/evals.mjs "${PROOF_SPEC#evals/}" --local --engine v1 --surface web --checkpoints
+        run: node evals/bin/evals.mjs "${PROOF_SPEC#evals/}" --local --surface web --checkpoints
       - name: Save testkit and Vitest records
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -169,13 +169,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(id -u)" -ne 0
-          if [ "$PROOF_SPEC" = 'evals/specs/opencode-v2-session-home.e2e.test.ts' ]; then
-            xvfb-run -a node evals/bin/evals.mjs "${PROOF_SPEC#evals/}" --local --engine v2 --surface web
-          elif node evals/scripts/run-parity-proof.mjs --supports "$PROOF_SPEC"; then
-            xvfb-run -a node evals/scripts/run-parity-proof.mjs "$PROOF_SPEC"
-          else
-            xvfb-run -a node evals/bin/evals.mjs "${PROOF_SPEC#evals/}" --local
-          fi
+          xvfb-run -a node evals/bin/evals.mjs "${PROOF_SPEC#evals/}" --local
       - name: Save selected native testkit and Vitest records
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -296,7 +290,7 @@ jobs:
             ~/Library/Caches/electron
             ~/Library/Caches/electron-builder
             apps/desktop/resources/sidecars
-          key: ${{ runner.os }}-${{ runner.arch }}-desktop-smoke-${{ hashFiles('constants.json', 'pnpm-lock.yaml', 'apps/desktop/scripts/prepare-sidecar.mjs') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-desktop-smoke-${{ hashFiles('constants.json', 'pnpm-lock.yaml', 'apps/desktop/scripts/prepare-sidecar.mjs', 'apps/desktop/scripts/prepare-opencode-v2.mjs', 'apps/server/src/opencode-v2-artifacts.json') }}
       - uses: ./.github/actions/setup-tests
       - name: Bundle the server plugins the way packaged builds do
         run: |
@@ -394,7 +388,7 @@ jobs:
             printf '%s\n' '::error::OPENAI_API_KEY is required for selected live proof. Configure repository/environment access; this proof cannot be skipped.' >&2
             exit 1
           fi
-          xvfb-run -a node evals/bin/evals.mjs "${PROOF_SPEC#evals/}" --local --engine v1 --surface web
+          xvfb-run -a node evals/bin/evals.mjs "${PROOF_SPEC#evals/}" --local --surface web
       - name: Save selected native testkit and Vitest records
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -468,7 +462,7 @@ jobs:
           OPENWORK_EVIDENCE_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
           OPENWORK_PREVIEW_GITHUB_TOKEN: ${{ github.token }}
           PROOF_SPEC: ${{ matrix.spec }}
-        run: xvfb-run -a node evals/bin/evals.mjs "${PROOF_SPEC#evals/}" --local --engine v1 --surface web --checkpoints
+        run: xvfb-run -a node evals/bin/evals.mjs "${PROOF_SPEC#evals/}" --local --surface web --checkpoints
       - name: Save selected native testkit and Vitest records
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

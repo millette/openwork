@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { expect } from "vitest";
 import { needs, test } from "@openwork/testkit";
 import { startCatalogWitness } from "../packages/labs/src/mock-mcp-catalog.ts";
-import { bootServer, isRecord, stopChild } from "../worlds/openwork-server-cli.ts";
+import { bootServer, engineBinaryEnv, isRecord, stopChild } from "../worlds/openwork-server-cli.ts";
 import { seedSyntheticPreactivatedDen } from "../packages/env/src/app-web-bootstrap.ts";
 
 // Operators can distinguish catalog failures and local App-host provisioning in
@@ -31,7 +31,7 @@ test("catalog reconciliation attributes failures without leaking private auth or
       ...inherited, HOME: home, XDG_CONFIG_HOME: join(home, "config"), XDG_DATA_HOME: join(home, "data"),
       XDG_STATE_HOME: join(home, "state"), XDG_CACHE_HOME: join(home, "cache"),
       OPENWORK_RUNTIME_DB: join(home, "runtime.sqlite"), OPENWORK_DEV_MODE: devMode,
-      OPENWORK_OPENCODE_BASE_URL: witness.url, OPENWORK_MANAGE_OPENCODE: "0",
+      ...engineBinaryEnv(),
       ...bootstrapEnv,
     }, clientToken, workspace, () => {});
     children.push(server.child);

@@ -27,10 +27,10 @@ scopeTest("switching and creating threads hydrate permissions without waiting fo
     await user.see("composer", { editable: true });
     const selectedReads = reads.filter((read) => !read.calibration);
     const heldReads = world.permissionReads().filter((read) => read.sessionId === world.unrelated.sessionId);
-    evidence.recordAssertionEvidence("Selecting a conversation reads only its permissions", `${world.engine}: ${selectedReads.length} selected-root read; ${heldReads.length} unrelated calibration request remains held and incomplete; the selected composer is editable.`,
+    evidence.recordAssertionEvidence("Selecting a conversation reads only its permissions", `${selectedReads.length} selected-root read; ${heldReads.length} unrelated calibration request remains held and incomplete; the selected composer is editable.`,
       selectedReads.length === 1 && selectedReads[0]?.sessionId === sessionId
         && heldReads.length === 1 && heldReads[0]?.held === true && heldReads[0]?.completed === false);
-    console.info(`[permission-scope] ${world.engine}: 1 scoped read, 0 unrelated reads, calibration still held`);
+    console.info("[permission-scope] 1 scoped read, 0 unrelated reads, calibration still held");
   };
   await step("switching reads only the selected root, not the other seven roots", async () => {
     const before = world.permissionReads().length;
@@ -108,14 +108,13 @@ function text(value: unknown): string {
 const stopTest = spec.world(permissionStopRecovery, { timeout: 600_000 });
 
 stopTest("retry recovery and stopping a permission leave other requests and fresh work intact", async ({ world, user, probe, step, evidence }) => {
-  const v2 = world.engine === "v2";
-  const mount = `/workspace/${encodeURIComponent(world.workspace.workspaceId)}/${v2 ? "opencode2/api" : "opencode"}`;
+  const mount = `/workspace/${encodeURIComponent(world.workspace.workspaceId)}/opencode2/api`;
   const read = async (path: string): Promise<unknown> => {
     const result = await probe.desktopApi(`${mount}${path}`);
     expect(result.status, path).toBe(200);
-    return v2 ? record(result.body).data : result.body;
+    return record(result.body).data;
   };
-  const pending = async (id: string) => records(await read(v2 ? `/session/${id}/permission` : "/permission"))
+  const pending = async (id: string) => records(await read(`/session/${id}/permission`))
     .filter((item) => item.sessionID === id);
   const send = async (prompt: string) => { await user.type("composer", prompt, { verify: true }); await user.press("Enter"); };
   const open = async (session: { title: string; sessionId: string }) => {
@@ -131,7 +130,7 @@ stopTest("retry recovery and stopping a permission leave other requests and fres
     // engine still owns the retry. None is evidence of completion.
     const observingUntil = Date.now() + 1_000;
     do {
-      const active = record(await read(v2 ? "/session/active" : "/session/status"));
+      const active = record(await read("/session/active"));
       expect(active[world.other.sessionId]).toBeDefined();
       await user.see({ text: /Rate limited for lifecycle verification/ });
     } while (Date.now() < observingUntil);
@@ -161,7 +160,7 @@ stopTest("retry recovery and stopping a permission leave other requests and fres
       label: "native interruption cleanup removes the pending permission", until: (items) => items.length === 0 });
     await user.notSee("Allow once", { timeoutMs: 15_000 });
     await user.notSee({ role: "button", label: "Stop" });
-    if (v2) expect(record(await read(`/session/${world.stopped.sessionId}`)).outcome).toBe("interrupted");
+    expect(record(await read(`/session/${world.stopped.sessionId}`)).outcome).toBe("interrupted");
     expect(await pending(world.other.sessionId)).toEqual(unrelated);
     expect((await world.mock.agentRequests({ promptMarker: world.stopped.prompt })).some((call) => call.kind === "final")).toBe(false);
     await user.reload();
@@ -198,36 +197,34 @@ stopTest("retry recovery and stopping a permission leave other requests and fres
 
 const questionTest = spec.world(delegatedQuestionHandoff, { timeout: 600_000 });
 questionTest("a parent answers and stops real child questions, then finishes fresh work without settling an unrelated root question", { timeout: 1_200_000 }, async ({ world, user, probe, step, evidence }) => {
-  const v2 = world.engine === "v2";
-  const mount = `/workspace/${encodeURIComponent(world.workspace.workspaceId)}/${v2 ? "opencode2/api" : "opencode"}`;
+  const mount = `/workspace/${encodeURIComponent(world.workspace.workspaceId)}/opencode2/api`;
   const sessionPath = (id: string) => `/session/${encodeURIComponent(id)}`;
   const read = async (path: string): Promise<unknown> => {
     const result = await probe.desktopApi(`${mount}${path}`);
     expect(result.status, path).toBe(200);
-    return v2 ? record(result.body).data : result.body;
+    return record(result.body).data;
   };
-  const pending = async () => records(await read(v2 ? "/form" : "/question"))
-    .filter((request) => !v2 || record(request.metadata).kind === "question")
+  const pending = async () => records(await read("/form"))
+    .filter((request) => record(request.metadata).kind === "question")
     .map((request) => {
-      const tool = record(v2 ? record(request.metadata).tool : request.tool);
-      const [question] = records(v2 ? request.fields : request.questions);
+      const tool = record(record(request.metadata).tool);
+      const [question] = records(request.fields);
       if (!question) throw new Error("Expected a question in the native request");
       return {
         id: text(request.id), sessionID: text(request.sessionID),
-        messageID: text(tool.messageID), callID: text(tool[v2 ? "id" : "callID"]),
-        question: text(question[v2 ? "description" : "question"]),
+        messageID: text(tool.messageID), callID: text(tool.id),
+        question: text(question.description),
       };
     }).sort((a, b) => a.id.localeCompare(b.id));
-  const transcript = async (id: string) => records(await read(`${sessionPath(id)}/${v2 ? "context" : "message?limit=50"}`))
+  const transcript = async (id: string) => records(await read(`${sessionPath(id)}/context`))
     .flatMap((message) => {
-      const info = v2 ? message : record(message.info);
-      if (info[v2 ? "type" : "role"] !== "assistant") return [];
-      const parts = records(v2 ? message.content : message.parts);
+      if (message.type !== "assistant") return [];
+      const parts = records(message.content);
       return [{
-        id: text(info.id), completed: typeof record(info.time).completed === "number",
+        id: text(message.id), completed: typeof record(message.time).completed === "number",
         text: parts.filter((part) => part.type === "text").map((part) => text(part.text)).join(""),
         tools: parts.filter((part) => part.type === "tool").map((part) => ({
-          callID: text(part[v2 ? "id" : "callID"]), name: text(part[v2 ? "name" : "tool"]),
+          callID: text(part.id), name: text(part.name),
           status: text(record(part.state).status), metadata: record(part.state).metadata,
         })),
       }];
@@ -259,7 +256,7 @@ questionTest("a parent answers and stops real child questions, then finishes fre
     expect(final?.text).not.toContain(excluded);
     expect(state.calls.filter((call) => call.kind === "tool").map((call) => call.toolName)).toEqual([tool]);
     expect(state.calls.some((call) => call.kind === "error")).toBe(false);
-    if (v2) await probe.eventually(() => read(sessionPath(id)), {
+    await probe.eventually(() => read(sessionPath(id)), {
       within: 15_000, label: "the native session records successful completion",
       until: (value) => record(value).outcome === "succeeded",
     });
@@ -311,8 +308,8 @@ questionTest("a parent answers and stops real child questions, then finishes fre
     const other = record(await read(sessionPath(unrelated.sessionID)));
     expect(owner).toMatchObject({ id: request.sessionID, parentID: world.root.sessionId });
     expect(root.parentID).toBeUndefined();
-    expect(owner[v2 ? "location" : "directory"]).toEqual(root[v2 ? "location" : "directory"]);
-    expect(other[v2 ? "location" : "directory"]).toEqual(root[v2 ? "location" : "directory"]);
+    expect(owner.location).toEqual(root.location);
+    expect(other.location).toEqual(root.location);
     await user.see({ text: world.child.question }, { timeoutMs: 30_000 });
     await user.see({ role: "button", label: /^Child checklist/ });
     await user.notSee({ text: world.unrelated.question });
@@ -342,12 +339,10 @@ questionTest("a parent answers and stops real child questions, then finishes fre
       within: 30_000, label: "only the original child request is settled",
       until: (items) => items.length === 1 && items[0]?.id === unrelated.id,
     });
-    if (v2) {
-      // OpenCode v2 2.0.26 reports a form's state on the form itself (no /state route).
-      const formState = async (sessionID: string, id: string) => record(await read(`${sessionPath(sessionID)}/form/${encodeURIComponent(id)}`)).state;
-      expect(await formState(child.sessionID, child.id)).toEqual({ status: "answered", answer: { q0: world.child.answer } });
-      expect(await formState(unrelated.sessionID, unrelated.id)).toEqual({ status: "pending" });
-    }
+    // OpenCode v2 2.0.26 reports a form's state on the form itself (no /state route).
+    const formState = async (sessionID: string, id: string) => record(await read(`${sessionPath(sessionID)}/form/${encodeURIComponent(id)}`)).state;
+    expect(await formState(child.sessionID, child.id)).toEqual({ status: "answered", answer: { q0: world.child.answer } });
+    expect(await formState(unrelated.sessionID, unrelated.id)).toEqual({ status: "pending" });
     const answer = `"${world.child.question}"="${world.child.answer}"`;
     const childFinished = await complete(child.sessionID, world.child.prompt, "question", answer, world.unrelated.answer);
     expect(childFinished.find((message) => message.id === child.messageID)?.tools).toContainEqual(expect.objectContaining({
@@ -356,7 +351,7 @@ questionTest("a parent answers and stops real child questions, then finishes fre
     const parentFinished = await complete(world.root.sessionId, world.root.prompt, world.delegationTool, answer, world.unrelated.answer);
     expect(parentFinished.flatMap((message) => message.tools)).toContainEqual(expect.objectContaining({
       name: world.delegationTool, status: "completed",
-      metadata: expect.objectContaining(v2 ? { sessionID: child.sessionID } : { sessionId: child.sessionID }),
+      metadata: expect.objectContaining({ sessionID: child.sessionID }),
     }));
     // The completed parent task is a doorway into the child's chat, not an
     // inline copy of its answer. Inspect the owned child's question result
@@ -422,16 +417,14 @@ questionTest("a parent answers and stops real child questions, then finishes fre
     expect((await world.mock.agentRequests({ promptMarker: world.followup.prompt })).map((call) => call.kind)).toEqual(["final"]);
     expect(await oldRequests()).toEqual(requestsBeforeStop);
     expect((await world.mock.agentRequests({ promptMarker: world.unrelated.prompt })).some((call) => call.kind === "final")).toBe(false);
-    if (v2) {
-      await probe.eventually(() => read(sessionPath(stopped.sessionID)), {
-        within: 15_000, label: "the stopped child retains the native interrupted outcome",
-        until: (value) => record(value).outcome === "interrupted",
-      });
-      await probe.eventually(() => read(sessionPath(world.root.sessionId)), {
-        within: 15_000, label: "only the fresh parent turn succeeds",
-        until: (value) => record(value).outcome === "succeeded",
-      });
-    }
+    await probe.eventually(() => read(sessionPath(stopped.sessionID)), {
+      within: 15_000, label: "the stopped child retains the native interrupted outcome",
+      until: (value) => record(value).outcome === "interrupted",
+    });
+    await probe.eventually(() => read(sessionPath(world.root.sessionId)), {
+      within: 15_000, label: "only the fresh parent turn succeeds",
+      until: (value) => record(value).outcome === "succeeded",
+    });
     return { parent, interrupted };
   });
 
@@ -451,7 +444,7 @@ questionTest("a parent answers and stops real child questions, then finishes fre
     expect(await oldRequests()).toEqual(requestsBeforeStop);
     const freshCalls = await world.mock.agentRequests({ promptMarker: world.followup.prompt });
     expect(freshCalls.map((call) => call.kind)).toEqual(["final"]);
-    if (v2) expect(record(await read(sessionPath(stopped.sessionID))).outcome).toBe("interrupted");
+    expect(record(await read(sessionPath(stopped.sessionID))).outcome).toBe("interrupted");
     const completedReplies = recovered.parent.filter((message) => message.completed && message.text === world.followup.reply);
     evidence.recordAssertionEvidence("The parent stops its child and completes fresh work without changing other conversations", `${freshCalls.length} fresh model request and ${completedReplies.length} completed fresh reply; ${remainingQuestions.length} remaining questions. The original answered child, interrupted child, and parent transcripts stayed exactly unchanged while the unrelated root answered its own request; the old parent and child request vectors also stayed unchanged.`,
       freshCalls.length === 1 && freshCalls[0]?.kind === "final" && completedReplies.length === 1 && remainingQuestions.length === 0);

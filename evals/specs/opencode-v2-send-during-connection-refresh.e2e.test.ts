@@ -9,7 +9,7 @@ import { engineParity } from "../worlds/engine-parity.ts";
 const test = spec.world(engineParity, {
   timeout: 420_000,
   resources: { surfaces: ["appWeb"], services: ["mock"] },
-  needs: { placement: "local", env: ["OPENWORK_EVAL_ENGINE"] },
+  needs: { placement: "local" },
 });
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -65,7 +65,6 @@ async function slowStartingConnection(notes: string) {
 // connection, and a message sent meanwhile waited for the restarts or ran
 // without the connection's tools.
 test("a member sends a message right after OpenWork refreshes their connections, and the reply starts at once with the connection's tool working", { tags: ["user-flow"] }, async ({ world, user, probe, step, evidence }) => {
-  expect(world.engine).toBe("v2");
   await probe.eventually(() => probe.composer(), { within: 60_000, label: "starter model ready", until: (state) => state.selectedModelLabel.includes("Big Pickle") && !state.modelUnavailable });
   const listed = await world.request("/workspaces");
   const items = record(listed.body) && Array.isArray(listed.body.items) ? listed.body.items.filter(record) : [];

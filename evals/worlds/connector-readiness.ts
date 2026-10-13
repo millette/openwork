@@ -1,7 +1,6 @@
 import type { Seed, Place } from "@openwork/env";
 import { faultProxy } from "@openwork/env";
 import { isRecord, records } from "./library.ts";
-import { engineBinary } from "./openwork-server-cli.ts";
 
 export async function connectorReadiness(seed: Seed, ctx: { place: Place }) {
   const den = await seed.den({
@@ -16,10 +15,8 @@ export async function connectorReadiness(seed: Seed, ctx: { place: Place }) {
   const id = created.body.id;
   const web = await seed.web({ den, signedInAs: den.admin, startPath: "/dashboard/mcp-connections", headless: true, viewport: { width: 1280, height: 900 } });
   const memberWeb = await seed.web({ den, signedInAs: den.members.teammate, startPath: "/dashboard/your-connections", headless: true, viewport: { width: 1280, height: 900 } });
-  const binary = engineBinary();
-  if (!binary) throw new Error("Prepare the shipped OpenCode sidecar before running this world.");
-  const app = await seed.appWeb({ name: "connector-readiness", workspacePath: seed.tmpPath("connector-readiness"), engine: "v2", headless: true, env: {
-    OPENWORK_OPENCODE_BIN: binary,
+  const app = await seed.appWeb({ name: "connector-readiness", workspacePath: seed.tmpPath("connector-readiness"), headless: true, env: {
+    ...(process.env.OPENWORK_OPENCODE2_BIN ? { OPENWORK_OPENCODE2_BIN: process.env.OPENWORK_OPENCODE2_BIN } : {}),
     OPENWORK_DEV_HEADLESS_WEB_DEN_PROXY: "1", OPENWORK_DEV_DEN_PROXY_TARGET: den.ref.webUrl,
     OPENWORK_DEV_HEADLESS_DEN_API_TARGET: den.ref.apiUrl,
     VITE_DEN_BASE_URL: den.ref.webUrl, VITE_DEN_API_BASE_URL: "/api/den",

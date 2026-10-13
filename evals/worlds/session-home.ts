@@ -1,5 +1,5 @@
 import { browserScript } from "@openwork/cdp";
-import { resolveEvalEngine, SkipError, type Seed } from "@openwork/env";
+import type { Seed } from "@openwork/env";
 import { access, mkdir, readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveServerConfig } from "../../apps/server/src/config.ts";
@@ -8,7 +8,6 @@ import { configureProvider } from "./chat.ts";
 
 /** Real UI, server and native engine. Only the model's decisions are scripted. */
 async function bootSessionHome(seed: Seed, mode: "stop" | "question" | "video") {
-  if (resolveEvalEngine() !== "v2") throw new SkipError("Session moves require OpenCode v2");
   const requested = seed.tmpPath("conversation-home");
   const requestedWorktree = seed.tmpPath("conversation-worktree");
   await mkdir(requested, { recursive: true });
@@ -49,7 +48,7 @@ async function bootSessionHome(seed: Seed, mode: "stop" | "question" | "video") 
       options: { baseURL: `${witness.url}/v1`, apiKey: "synthetic-home-key" },
       models: { "home-model": { name: "Home witness" } },
     } },
-  }, "v2");
+  });
   const session = await seed.session(app, { title: "Worktree continuity" });
   const read = (path: string) => seed.evalIn(app, browserScript(async path => {
     const response = await fetch("http://127.0.0.1:" + localStorage.getItem("openwork.server.port") + path, {
@@ -65,7 +64,7 @@ async function bootSessionHome(seed: Seed, mode: "stop" | "question" | "video") 
     sessionState: () => read(`${mount}/session/${session.sessionId}`),
     sessions: () => read(`${mount}/session?limit=100`),
     active: () => read(`${mount}/session/active`),
-    runtime: () => read("/experimental/engine-v2-preview/status"),
+    runtime: () => read("/engine/status"),
     async recoverUnindexedHome() {
       const config = await resolveServerConfig({ configPath: seed.tmpPath("legacy-home-index") + "/server.json", workspaces: [home] });
       const homes = createV2SessionHomes(config, async path => {

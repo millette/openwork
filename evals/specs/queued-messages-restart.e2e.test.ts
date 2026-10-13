@@ -159,7 +159,7 @@ test("CD10: a queued follow-up survives a pre-acceptance transport hold and relo
     expect(await world.engineMessageCounts()).toEqual({ users: 1, queued: 0 });
   });
 
-  await step("destroy the renderer with prompt_async unresolved; recover without sending", async () => {
+  await step("destroy the renderer with the queued prompt unresolved; recover without sending", async () => {
     await user.reload();
     await user.see({ text: world.running.prompt });
     // A bounded idle observation catches any automatic drain in the new renderer.

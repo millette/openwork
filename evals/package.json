@@ -17,7 +17,7 @@
     "check": "pnpm run check:browser && pnpm run lint:layers && node scripts/spec-channel-ratchet.mjs && node scripts/spec-boundary-ratchet.mjs",
     "typecheck": "node scripts/typecheck.mjs",
     "typecheck:spec-layer": "tsc -p tsconfig.primitives.json",
-    "test:core": "vitest run --config vitest.config.ts --project pr specs/thread-approvals-replay.test.ts specs/effective-permissions-attribution.test.ts specs/pdf-attachments-model-routing.test.ts specs/route-session-list.test.ts",
+    "test:core": "vitest run --config vitest.config.ts --project pr specs/route-session-list.test.ts specs/session-introspection-affordances.test.ts specs/session-model-aliases.test.ts",
     "check:browser": "node scripts/check-browser-code.mjs"
   },
   "dependencies": {

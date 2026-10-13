@@ -1,9 +1,9 @@
 import { expect } from "vitest";
-import { resolveEvalEngine, spec } from "@openwork/testkit";
+import { spec } from "@openwork/testkit";
 import { engineConnectorNeedsSignIn } from "../worlds/engine-connectors-parity.ts";
 
 // Web app + a real Den per-member Notion connection the member hasn't connected yet,
-// reached through OpenWork Cloud: direct calls on v1, one Code Mode `execute` on v2.
+// reached through OpenWork Cloud with one Code Mode `execute`.
 const test = spec.world(engineConnectorNeedsSignIn, {
   timeout: 420_000, resources: { surfaces: ["appWeb"], services: ["den", "mock"] },
 });
@@ -12,7 +12,7 @@ const PROMPT = "Find our roadmap page in Notion.";
 const REPLY = "Notion needs you to connect it first.";
 const CARD = '[data-testid="desktop-connection-card"]';
 
-test(`AGENT-VIS-06 ${resolveEvalEngine()}: a person asks for something in a service they haven't connected and gets a Connect card`, async ({ world, user, probe, step, evidence }) => {
+test(`AGENT-VIS-06: a person asks for something in a service they haven't connected and gets a Connect card`, async ({ world, user, probe, step, evidence }) => {
   await step("the person asks for their Notion roadmap page", async () => {
     await world.prepareNeedsSignIn(PROMPT, REPLY);
     await user.type("composer", PROMPT);

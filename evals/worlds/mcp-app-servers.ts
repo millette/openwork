@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { chrome, defaultDaytonaExec, execInSandbox } from "@openwork/hosts";
 import { browserScript, connect, debuggerUrlFor, evaluate, listTargets, locate, type Surface } from "@openwork/cdp";
-import { queryDenDatabase, type EvalEngine, type Place, type Seed } from "@openwork/env";
+import { queryDenDatabase, type Place, type Seed } from "@openwork/env";
 import type { MockMcpTool } from "@openwork/labs";
 import { reconcileDraftHost } from "../fixtures/cloud-draft-host.ts";
 import { configureProvider } from "./chat.ts";
@@ -504,10 +504,10 @@ export const signInReply = "Here is the Order calculator.";
  * create_app and opens an existing one with launch input, both through
  * Connect, and each App's own tools run in the conversation.
  */
-export async function mcpAppServersChat(seed: Seed, benchmark: boolean | { place: Place } = false, options: { engine?: EvalEngine; desktop?: boolean; lifecycle?: boolean; ownSignIn?: boolean } = {}) {
+export async function mcpAppServersChat(seed: Seed, benchmark: boolean | { place: Place } = false, options: { desktop?: boolean; lifecycle?: boolean; ownSignIn?: boolean } = {}) {
   const measured = benchmark === true;
-  const engine = options.engine ?? "v1";
-  const toolStep = (tool: string, args: Record<string, unknown>) => engine === "v2" ? { tool: "execute", arguments: { code: `return await tools["openwork-cloud"].${tool}(${JSON.stringify(args)});` } } : { tool, arguments: args };
+  // The engine reaches Connect tools through one Code Mode `execute`.
+  const toolStep = (tool: string, args: Record<string, unknown>) => ({ tool: "execute", arguments: { code: `return await tools["openwork-cloud"].${tool}(${JSON.stringify(args)});` } });
   // Den's numeric App timings (never payloads) let the journey count requests to an App's own server.
   const den = await seed.den({
     env: { DEN_GENERATED_ARTIFACT_VIEWS_ENABLED: "true", DEN_APP_MCP_SERVERS_ENABLED: "true", DEN_DASHBOARDS_ENABLED: "true", OPENWORK_MCP_APP_TIMINGS: "1" },
@@ -568,16 +568,16 @@ export async function mcpAppServersChat(seed: Seed, benchmark: boolean | { place
       { promptMarker: buildPrompt, finalReply: buildReply, latestUserTurn: true, steps: [
         ...(options.lifecycle ? [toolStep("search_capabilities", { query: "Inventory lookup unit price", type: "mcp", limit: 2 })] : []),
         toolStep("prepare_app", { title: pricerTitle, tools }),
-        { ...toolStep("create_app", { ...appSource("revision one", { title: pricerTitle, sampleOrder: true }), tools, ...(engine === "v2" ? { preparationId: "__APP_PREPARATION_ID__" } : {}) }), argumentsFrom: "app-preparation", holdUntilReleased: true },
+        { ...toolStep("create_app", { ...appSource("revision one", { title: pricerTitle, sampleOrder: true }), tools, preparationId: "__APP_PREPARATION_ID__" }), argumentsFrom: "app-preparation", holdUntilReleased: true },
       ] },
       { promptMarker: chatPrompt, finalReply: chatReply, latestUserTurn: true, steps: [
-        { tool: "execute_capability", arguments: { name: `plugin:${created.pluginId}:${created.appId}`, body: launchInput } },
+        toolStep("execute_capability", { name: `plugin:${created.pluginId}:${created.appId}`, body: launchInput }),
       ] },
       { promptMarker: reopenPrompt, finalReply: reopenReply, latestUserTurn: true, steps: [
-        { tool: "execute_capability", arguments: { name: `plugin:${created.pluginId}:${created.appId}`, body: launchInput } },
+        toolStep("execute_capability", { name: `plugin:${created.pluginId}:${created.appId}`, body: launchInput }),
       ] },
       { promptMarker: signInPrompt, finalReply: signInReply, latestUserTurn: true, steps: [
-        { tool: "execute_capability", arguments: { name: `plugin:${created.pluginId}:${created.appId}`, body: launchInput } },
+        toolStep("execute_capability", { name: `plugin:${created.pluginId}:${created.appId}`, body: launchInput }),
       ] },
     ] }),
     signal: AbortSignal.timeout(15_000),
@@ -586,7 +586,7 @@ export async function mcpAppServersChat(seed: Seed, benchmark: boolean | { place
   const workspacePath = seed.tmpPath("mcp-app-servers-chat");
   const denOrigin = new URL(den.ref.apiUrl);
   // The creation journeys open a step's hover-only technical details; an owner on a computer has a mouse even when the runner's headless Chrome finds none.
-  const app = options.desktop ? await seed.desktop({ den, as: "admin", workspacePath, enterpriseActivated: true }) : await seed.appWeb({ name: `mcp-app-servers-chat-${engine}`, workspacePath, headless: true, mouse: options.lifecycle, engine,
+  const app = options.desktop ? await seed.desktop({ den, as: "admin", workspacePath, enterpriseActivated: true }) : await seed.appWeb({ name: "mcp-app-servers-chat", workspacePath, headless: true, mouse: options.lifecycle,
     env: {
       OPENWORK_DEV_HEADLESS_WEB_DEN_PROXY: "1", OPENWORK_DEV_DEN_PROXY_TARGET: den.ref.webUrl,
       OPENWORK_DEV_HEADLESS_DEN_API_TARGET: den.ref.apiUrl,
@@ -603,7 +603,7 @@ export async function mcpAppServersChat(seed: Seed, benchmark: boolean | { place
       models: { "app-chat-model": { name: "App chat model fixture", tool_call: true } },
     } },
     mcp: { "openwork-cloud": { type: "remote", url: `${den.ref.apiUrl}/mcp/agent`, enabled: true, oauth: false, headers: { Authorization: `Bearer ${token}` } } },
-  }, engine);
+  });
   const session = await seed.session(app, { title: appTitle });
   // The private App host reads the Connect server index, which lists the App as its own server.
   if ("openworkUrl" in app) {
@@ -630,7 +630,7 @@ export async function mcpAppServersChat(seed: Seed, benchmark: boolean | { place
     if (status !== 200) throw new Error(`Desktop App host reconciliation failed: ${status}`);
   }
   return {
-    app, session, den, created, performanceApps, workspace, engine,
+    app, session, den, created, performanceApps, workspace,
     /** Den's log so far; pass its length to appServerRequests. */
     denLog: () => den.apiLog(),
     /** Requests Den's App servers handled since a denLog() snapshot, by MCP method, once at least `atLeast` tools/call requests finished. */
@@ -660,14 +660,12 @@ export async function mcpAppServersChat(seed: Seed, benchmark: boolean | { place
         // The agent reads the guide, finds the tool, prepares, and publishes prepare_app's starter unchanged.
         ? [toolStep("get_skill", { name: "build-an-app" }), toolStep("search_capabilities", { query: "Inventory lookup unit price", type: "mcp", limit: 2 }),
           { ...toolStep("prepare_app", { title: guidedTitle, description: "Look up a product's unit price in Inventory.", tools: lookup }), holdUntilReleased: true },
-          { ...(engine === "v2"
-            ? { tool: "execute", arguments: { code: `return await tools["openwork-cloud"].create_app({ ...${JSON.stringify({ title: guidedTitle, tools: lookup, textFallback: "Looks up a product's unit price in Inventory." })}, ..."__APP_STARTER__" });` } }
-            : toolStep("create_app", { title: guidedTitle, tools: lookup, textFallback: "Looks up a product's unit price in Inventory." })), argumentsFrom: "app-starter" }]
+          { tool: "execute", arguments: { code: `return await tools["openwork-cloud"].create_app({ ...${JSON.stringify({ title: guidedTitle, tools: lookup, textFallback: "Looks up a product's unit price in Inventory." })}, ..."__APP_STARTER__" });` }, argumentsFrom: "app-starter" }]
         : kind === "edit"
-        ? [toolStep("read_app", { appId: field(built, "connectionId") }), { ...toolStep("update_app", { ...appSource("revision two", { title: pricerTitle, sampleOrder: true }), appId: field(built, "connectionId"), ...(engine === "v2" ? { expectedRevisionId: "__APP_REVISION_ID__" } : {}) }), argumentsFrom: "app-read", holdUntilReleased: true }]
+        ? [toolStep("read_app", { appId: field(built, "connectionId") }), { ...toolStep("update_app", { ...appSource("revision two", { title: pricerTitle, sampleOrder: true }), appId: field(built, "connectionId"), expectedRevisionId: "__APP_REVISION_ID__" }), argumentsFrom: "app-read", holdUntilReleased: true }]
         : kind === "failure"
           ? [toolStep("create_app", { title: "Broken App", reactSource: "export default function App( {", tools, textFallback: "The App is unavailable." })]
-          : [toolStep("prepare_app", { title: "Interrupted App", tools }), { ...toolStep("create_app", { ...appSource("interrupted", { title: "Interrupted App", sampleOrder: true }), tools, ...(engine === "v2" ? { preparationId: "__APP_PREPARATION_ID__" } : {}) }), argumentsFrom: "app-preparation", holdUntilReleased: true }];
+          : [toolStep("prepare_app", { title: "Interrupted App", tools }), { ...toolStep("create_app", { ...appSource("interrupted", { title: "Interrupted App", sampleOrder: true }), tools, preparationId: "__APP_PREPARATION_ID__" }), argumentsFrom: "app-preparation", holdUntilReleased: true }];
       const response = await fetch(`${den.mocks.inventory.url}/admin/agent-workloads`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ workloads: [{ promptMarker: prompt, finalReply: kind === "edit" ? "The App has been updated." : kind === "search" ? "Inventory can look up unit prices." : kind === "guided" ? guidedReply : "The App could not be created.", latestUserTurn: true, steps }] }) });
       if (!response.ok) throw new Error("Could not prepare the lifecycle turn");
       return field(built, "connectionId");
@@ -788,6 +786,5 @@ export async function mcpAppServersChat(seed: Seed, benchmark: boolean | { place
 }
 
 export const mcpAppServersChatOwnSignIn = (seed: Seed) => mcpAppServersChat(seed, false, { ownSignIn: true });
-export const mcpAppCreationV1 = (seed: Seed) => mcpAppServersChat(seed, false, { engine: "v1", lifecycle: true });
-export const mcpAppCreationV2 = (seed: Seed) => mcpAppServersChat(seed, false, { engine: "v2", lifecycle: true });
-export const mcpAppCreationDesktop = (seed: Seed) => mcpAppServersChat(seed, false, { engine: "v1", desktop: true, lifecycle: true });
+export const mcpAppCreation = (seed: Seed) => mcpAppServersChat(seed, false, { lifecycle: true });
+export const mcpAppCreationDesktop = (seed: Seed) => mcpAppServersChat(seed, false, { desktop: true, lifecycle: true });

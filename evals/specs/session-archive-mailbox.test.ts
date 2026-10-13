@@ -12,7 +12,7 @@ test("mailbox registration expires after a poll gap, independently of pin or eng
   try {
     await mailbox.pending({ wait: false, signal });
     expect(mailbox.connected()).toBe(true);
-    const inFlight = mailbox.request("command", { id: "session.archive", args: { sessionId: "fixture-idle" } });
+    const inFlight = mailbox.request("command", { id: "session.rename", args: { sessionId: "fixture-idle", title: "Renamed" } });
     const delivered = await mailbox.pending({ wait: false, signal });
     expect(delivered).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(5_000);

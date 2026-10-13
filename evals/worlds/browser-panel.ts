@@ -2,7 +2,7 @@ import { browserScript, browserSource } from "@openwork/cdp";
 import { control, readBrowserTabMetrics } from "@openwork/behaviors";
 import { captureScreenshot, connect, debuggerUrlFor, evaluate, listTargets, navigate } from "@openwork/cdp";
 import type { AttachedSurface, CdpClient, Surface } from "@openwork/cdp";
-import { resolveEvalEngine, type Seed } from "@openwork/env";
+import type { Seed } from "@openwork/env";
 import { browserScriptValue, runBrowserHost } from "../packages/env/src/browser-task.ts";
 
 export const CAPTURE_VIEWPORT = { width: 1440, height: 900 };
@@ -210,39 +210,7 @@ export async function createBuiltinBrowserWorld(seed: Seed, env?: Record<string,
     app,
     workspace,
     session,
-    sessionApiBase: `/workspace/${encodeURIComponent(workspace.workspaceId)}/${resolveEvalEngine() === "v2" ? "opencode2/api" : "opencode"}/session`,
-
-    /** Persist a real transcript link and an attached file without invoking a model. */
-    async seedTranscriptLink(sessionId: string) {
-      const url = `${origin}/?viewport-probe=transcript-link&source=chat%20link#working-page`;
-      const artifactName = "browser-handoff.md";
-      const artifactText = "Keep these notes open while following the research link.";
-      await seed.evalIn(app, browserScript(async (workspaceId, sessionId, url, artifactName, artifactText, fileUrl) => {
-        const info = await window.__OPENWORK_ELECTRON__.invokeDesktop("openworkServerInfo");
-        if (!info.baseUrl) throw new Error("Missing local server URL");
-        const base = info.baseUrl.replace(/\/+$/, "") + "/workspace/" + encodeURIComponent(workspaceId);
-        const headers = { Authorization: "Bearer " + (info.ownerToken ?? info.clientToken), "Content-Type": "application/json" };
-        const file = await fetch(base + "/files/content", {
-          method: "POST", headers, signal: AbortSignal.timeout(15000),
-          body: JSON.stringify({ path: artifactName, content: artifactText, baseUpdatedAt: null }),
-        });
-        if (!file.ok) throw new Error("Could not seed the handoff file: " + file.status);
-        const message = await fetch(base + "/opencode/session/" + encodeURIComponent(sessionId) + "/message", {
-          method: "POST", headers, signal: AbortSignal.timeout(30000),
-          body: JSON.stringify({ noReply: true, parts: [
-            { type: "text", text: "Continue research at " + url },
-            { type: "text", synthetic: true, text: "Attached workspace file: " + artifactName,
-              metadata: { openworkAttachments: [{ filename: artifactName, mime: "text/markdown", url: fileUrl }] } },
-          ] }),
-        });
-        if (!message.ok) throw new Error("Could not seed the transcript link: " + message.status);
-        const saved = await message.json();
-        if (!Array.isArray(saved.parts) || !saved.parts.some((part: { type?: string; text?: string }) => part.type === "text" && part.text?.includes(url))) {
-          throw new Error("Transcript seed did not persist the requested link.");
-        }
-      }, [workspace.workspaceId, sessionId, url, artifactName, artifactText, new URL(`file://${workspacePath}/${artifactName}`).href]), { awaitPromise: true, timeoutMs: 50_000 });
-      return { url, artifactName, artifactText };
-    },
+    sessionApiBase: `/workspace/${encodeURIComponent(workspace.workspaceId)}/opencode2/api/session`,
 
     /** Create another conversation in the same workspace; the app shows it. */
     async openSession(title: string): Promise<{ sessionId: string; title: string }> {
@@ -434,142 +402,6 @@ export async function createBuiltinBrowserWorld(seed: Seed, env?: Record<string,
         await evaluate(client, () => (({ width: window.innerWidth, height: window.innerHeight }))),
       ));
     },
-  };
-}
-
-/** Arrange a persisted transcript link and its neighboring conversation. */
-export async function transcriptLinkWorld(seed: Seed) {
-  const world = await createBuiltinBrowserWorld(seed, { OPENWORK_DEV_MODE: "1", OPENWORK_EVAL_CAPTURE_EXTERNAL_OPENS: "1" });
-  const { app, workspace } = world;
-  const profileDir = app.handle.profileDir;
-  if (!profileDir) throw new Error("The link fixture desktop did not expose its isolated profile.");
-  const reading = { ...world.session, title: "Reading a shared link" };
-  await world.renameSession(reading.sessionId, reading.title);
-  const neighbor = await world.openSession("Unrelated browser research");
-  const neighborTab = await world.openTab("link-neighbor", neighbor.sessionId);
-  const origin = await embeddedServerUrl(seed, app);
-  const linkUrl = `${origin}/?link-context=alpha%20beta&encoded=%2Fkeep%3Fyes%3D1#thread-link`;
-  const note = "Keep this note in its own conversation.";
-  await seed.evalIn(app, browserScript(async (workspaceId, sessionId, note, url) => {
-    const info = await window.__OPENWORK_ELECTRON__.invokeDesktop("openworkServerInfo");
-    const response = await fetch(String(info.baseUrl).replace(/\/+$/, "")
-      + "/workspace/" + encodeURIComponent(workspaceId)
-      + "/opencode/session/" + encodeURIComponent(sessionId) + "/message", {
-      method: "POST",
-      headers: { Authorization: "Bearer " + info.ownerToken, "Content-Type": "application/json" },
-      body: JSON.stringify({ noReply: true, parts: [
-        { type: "text", text: note },
-        { type: "text", text: "Reference: " + url },
-      ] }),
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!response.ok) throw new Error("Transcript message seed failed: " + response.status);
-    return true;
-  }, [workspace.workspaceId, reading.sessionId, note, linkUrl]), { awaitPromise: true, timeoutMs: 35_000 });
-  await world.showSession(reading.sessionId);
-
-  return {
-    ...world,
-    reading,
-    neighbor,
-    neighborTab,
-    linkUrl,
-    note,
-
-    // Observe the shipping external-open boundary using its existing dev-only
-    // capture, so the test never opens a browser in the person's real profile.
-    async externalOpens(): Promise<string[]> {
-      const text = await runBrowserHost(app, `
-        const { readFile } = await import("node:fs/promises");
-        const { join } = await import("node:path");
-        try { return await readFile(join(${browserScriptValue(profileDir)}, "electron-userdata", "openwork-eval-external-opens.jsonl"), "utf8"); }
-        catch (error) { if (error.code === "ENOENT") return ""; throw error; }
-      `);
-      if (typeof text !== "string") throw new Error("External-open capture did not return text.");
-      return text.trim() ? text.trim().split("\n").map((line) => {
-        const value: unknown = JSON.parse(line);
-        if (typeof value !== "string") throw new Error("Invalid external-open capture.");
-        return value;
-      }) : [];
-    },
-
-    async readLink() {
-      return evaluate(app.client, browserScript((linkUrl) => {
-        const link = [...document.querySelectorAll<HTMLAnchorElement>('[data-message-role="user"] a[href]')]
-          .find(node => node.getAttribute("href") === linkUrl);
-        return link ? { href: link.href, sessionId: link.closest<HTMLElement>("[data-session-surface-id]")?.dataset.sessionSurfaceId } : null;
-      }, [linkUrl]));
-    },
-
-    async readMainUrl() {
-      return evaluate(app.client, () => (location.href));
-    },
-
-    async readClipboard() {
-      return evaluate(app.client, () => (navigator.clipboard.readText()), { awaitPromise: true });
-    },
-
-    /**
-     * The native popup as the development seam describes it. Native menus are
-     * OS widgets with no CDP target, so this is the only observation of them.
-     */
-    async nativeMenu(): Promise<NativeMenuState> {
-      return parseNativeMenuState(await evaluate(app.client, () => (window.__OPENWORK_ELECTRON__.contextMenu.inspect()), { awaitPromise: true }));
-    },
-
-    /** What the OS does when the user clicks one entry of the open popup. */
-    async chooseMenuItem(id: string): Promise<boolean> {
-      return await evaluate(app.client, browserScript((id) => window.__OPENWORK_ELECTRON__.contextMenu.choose(id), [id]), { awaitPromise: true }) === true;
-    },
-
-    /** What the OS does when the user clicks away from or escapes the open popup. */
-    async dismissMenu(): Promise<boolean> {
-      return await evaluate(app.client, () => (window.__OPENWORK_ELECTRON__.contextMenu.dismiss()), { awaitPromise: true }) === true;
-    },
-  };
-}
-
-export interface NativeMenuItem {
-  type: "item" | "separator";
-  id: string | null;
-  label: string | null;
-  enabled: boolean;
-}
-
-export interface NativeMenuPopup {
-  requestId: string | null;
-  items: NativeMenuItem[];
-}
-
-export interface NativeMenuState {
-  open: boolean;
-  current: NativeMenuPopup | null;
-  last: (NativeMenuPopup & { selectedId: string | null }) | null;
-}
-
-function parseNativeMenuPopup(value: unknown): NativeMenuPopup {
-  if (!isRecord(value) || !Array.isArray(value.items)) throw new Error("The desktop bridge reported a malformed native menu.");
-  return {
-    requestId: typeof value.requestId === "string" ? value.requestId : null,
-    items: value.items.map((entry) => {
-      if (!isRecord(entry) || (entry.type !== "item" && entry.type !== "separator")) throw new Error("The desktop bridge reported a malformed native menu item.");
-      return {
-        type: entry.type,
-        id: typeof entry.id === "string" ? entry.id : null,
-        label: typeof entry.label === "string" ? entry.label : null,
-        enabled: entry.enabled !== false,
-      };
-    }),
-  };
-}
-
-function parseNativeMenuState(value: unknown): NativeMenuState {
-  if (!isRecord(value) || typeof value.open !== "boolean") throw new Error("The desktop bridge did not report native menu state.");
-  return {
-    open: value.open,
-    current: value.current === null ? null : parseNativeMenuPopup(value.current),
-    last: value.last === null || !isRecord(value.last) ? null
-      : { ...parseNativeMenuPopup(value.last), selectedId: typeof value.last.selectedId === "string" ? value.last.selectedId : null },
   };
 }
 

@@ -1,7 +1,7 @@
 import { mkdir, realpath, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join } from "node:path";
-import { SkipError, type Seed } from "@openwork/env";
+import type { Seed } from "@openwork/env";
 import {
   buildLocalProviderInstallPatch,
   buildLocalProviderSyncPatch,
@@ -9,7 +9,7 @@ import {
   fetchOllamaSyncInput,
   OLLAMA_PROVIDER_CONFIG,
 } from "../../apps/app/src/react-app/domains/settings/openai-image-extension.ts";
-import { bootManagedOpenworkServer, close, engineBinary, isRecord, listen, readBody, sendJson, sendStream } from "./openwork-server-cli.ts";
+import { bootManagedOpenworkServer, close, engineData, isRecord, listen, readBody, sendJson, sendStream } from "./openwork-server-cli.ts";
 
 /** What the fake Ollama reports from `/api/show` for each pulled model. */
 export const OLLAMA_MODELS: Record<string, { capabilities: string[]; thinking?: { values: unknown[]; default?: unknown } }> = {
@@ -25,13 +25,11 @@ export type ChatRequest = { model: string; effort: unknown; title: boolean };
 
 /**
  * A fake Ollama (`/api/show` and the OpenAI-compatible chat endpoint) behind a
- * real openwork-server and the pinned engine. Models are added exactly as
+ * real openwork-server and OpenCode v2. Models are added exactly as
  * Settings > Ollama adds them: the app's capability read, the app's config
  * patch, then an engine reload.
  */
 export async function ollamaLocalModels(seed: Seed) {
-  const binary = engineBinary();
-  if (!binary) throw new SkipError("set OPENWORK_OPENCODE_BIN or install opencode");
   const root = seed.tmpPath("ollama-local-models");
   await mkdir(root, { recursive: true });
   const scratch = await realpath(root);
@@ -76,15 +74,35 @@ export async function ollamaLocalModels(seed: Seed) {
   };
 
   try {
-    const server = await bootManagedOpenworkServer({ scratch, workspace, token, binary, sink: () => undefined });
+    const server = await bootManagedOpenworkServer({ scratch, workspace, token, sink: () => undefined });
     managed = server;
     const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
     const workspaceUrl = `${server.base}/workspace/${encodeURIComponent(server.workspaceId)}`;
 
-    const reload = async () => {
+    /** Each Ollama model the engine offers, with its thinking levels (sorted; the picker orders them itself). */
+    const pickerModels = async (): Promise<Record<string, string[]>> => {
+      const models = engineData(await server.engine("GET", "/api/model"));
+      return Object.fromEntries((Array.isArray(models) ? models : []).filter(isRecord)
+        .filter((model) => model.providerID === OLLAMA_PROVIDER_CONFIG.providerId && typeof model.id === "string")
+        .map((model) => [String(model.id), (Array.isArray(model.variants) ? model.variants : [])
+          .flatMap((variant) => isRecord(variant) && typeof variant.id === "string" ? [variant.id] : []).sort()]));
+    };
+
+    /** Reloads the engine and waits until its catalog lists exactly `expected` Ollama models. */
+    const reload = async (expected: string[]) => {
       const reloaded = await fetch(`${workspaceUrl}/engine/reload`, { method: "POST", headers, signal: AbortSignal.timeout(90_000) });
       if (!reloaded.ok) throw new Error(`Engine reload failed: ${reloaded.status} ${await reloaded.text()}`);
+      const want = [...new Set(expected)].sort().join(",");
+      const deadline = Date.now() + 45_000;
+      let seen = Object.keys(await pickerModels()).sort().join(",");
+      while (seen !== want) {
+        if (Date.now() > deadline) throw new Error(`The engine catalog lists Ollama models [${seen}], expected [${want}]`);
+        await new Promise((wait) => setTimeout(wait, 250));
+        seen = Object.keys(await pickerModels()).sort().join(",");
+      }
     };
+    /** What the saved config lists after each change, so the reload knows what to wait for. */
+    const saved = new Set<string>();
 
     /** Settings > Ollama > Add to workspace, for one pulled model. */
     const addModel = async (modelId: string) => {
@@ -96,7 +114,8 @@ export async function ollamaLocalModels(seed: Seed) {
       });
       const patched = await fetch(`${workspaceUrl}/config`, { method: "PATCH", headers, body: JSON.stringify(patch) });
       if (!patched.ok) throw new Error(`Adding ${modelId} failed: ${patched.status} ${await patched.text()}`);
-      await reload();
+      saved.add(modelId);
+      await reload([...saved]);
       return capabilities;
     };
 
@@ -106,34 +125,27 @@ export async function ollamaLocalModels(seed: Seed) {
       if (!input) throw new Error("Ollama was not reachable for sync");
       const patched = await fetch(`${workspaceUrl}/config`, { method: "PATCH", headers, body: JSON.stringify(buildLocalProviderSyncPatch(input)) });
       if (!patched.ok) throw new Error(`Sync failed: ${patched.status} ${await patched.text()}`);
-      await reload();
-      return input.models.map((model) => model.modelId);
+      const synced = input.models.map((model) => model.modelId);
+      saved.clear();
+      for (const modelId of synced) saved.add(modelId);
+      await reload(synced);
+      return synced;
     };
 
     /** The person removes a model with `ollama rm`, outside OpenWork. */
     const removeFromOllama = (modelId: string) => { installed.delete(modelId); };
 
-    /** Each Ollama model the engine offers, with its thinking levels (sorted; the picker orders them itself). */
-    const pickerModels = async (): Promise<Record<string, string[]>> => {
-      const payload = await server.engine("GET", "/provider");
-      const providers = isRecord(payload) && Array.isArray(payload.all) ? payload.all : [];
-      const provider = providers.find((entry) => isRecord(entry) && entry.id === OLLAMA_PROVIDER_CONFIG.providerId);
-      const models = isRecord(provider) && isRecord(provider.models) ? provider.models : {};
-      return Object.fromEntries(Object.entries(models).map(([id, model]) => [id,
-        isRecord(model) && isRecord(model.variants) ? Object.keys(model.variants).sort() : []]));
-    };
-
     /** Sends one prompt with a thinking level (null = Default) and returns what reached Ollama. */
     const send = async (modelID: string, variant: string | null): Promise<ChatRequest> => {
-      const session = await server.engine("POST", "/session", {});
-      if (!isRecord(session) || typeof session.id !== "string") throw new Error("Session was not created");
+      const session = await server.createSession();
       const offset = chats.length;
-      const result = await server.engine("POST", `/session/${session.id}/message`, {
-        model: { providerID: OLLAMA_PROVIDER_CONFIG.providerId, modelID }, ...(variant === null ? {} : { variant }),
-        parts: [{ type: "text", text: "Say hello." }],
-      });
-      const replied = isRecord(result) && Array.isArray(result.parts) && result.parts.some((part) => isRecord(part) && part.text === REPLY);
-      if (!replied) throw new Error(`No reply from ${modelID}: ${JSON.stringify(result).slice(0, 400)}`);
+      const messages = await server.prompt(session, {
+        providerID: OLLAMA_PROVIDER_CONFIG.providerId, id: modelID, ...(variant === null ? {} : { variant }),
+      }, "Say hello.");
+      const reply = messages.at(-1);
+      const content = reply?.content;
+      const replied = reply?.text === REPLY || (Array.isArray(content) && content.some((part) => isRecord(part) && part.text === REPLY));
+      if (!replied) throw new Error(`No reply from ${modelID}: ${JSON.stringify(reply).slice(0, 400)}`);
       const request = chats.slice(offset).find((entry) => entry.model === modelID && !entry.title);
       if (!request) throw new Error(`No chat request for ${modelID} reached Ollama`);
       return request;

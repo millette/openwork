@@ -123,7 +123,8 @@ export async function appConnectionCard(seed: Seed) {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ workloads: [
       { promptMarker: openPrompt, finalReply: openReply, latestUserTurn: true, steps: [
-        { tool: "execute_capability", arguments: { name: `plugin:${app.pluginId}:${app.appId}`, body: {} } },
+        // The engine reaches Connect tools through one Code Mode `execute`.
+        { tool: "execute", arguments: { code: `return await tools["openwork-cloud"].execute_capability(${JSON.stringify({ name: `plugin:${app.pluginId}:${app.appId}`, body: {} })});` } },
       ] },
     ] }),
     signal: AbortSignal.timeout(15_000),

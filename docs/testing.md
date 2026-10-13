@@ -4,7 +4,8 @@ OpenWork has no package-level unit tests. All executable coverage lives in the
 E2E journeys under `evals/specs` (see `evals/README.md`). Install both
 workspaces with `pnpm install --frozen-lockfile` and
 `pnpm --dir evals install --frozen-lockfile` first. Use Node 24, Bun 1.3.14,
-pnpm 11.4.0, and the OpenCode version in `constants.json` on PATH, matching CI.
+pnpm 11.4.0, and OpenCode v2 at `opencodeV2Version` from `constants.json`
+(`opencode2` on PATH or `OPENWORK_OPENCODE2_BIN`), matching CI.
 
 ## What blocks a merge
 
@@ -12,8 +13,7 @@ The `openwork-tests-required` check keeps its existing name and fails closed.
 For ordinary code changes it requires two independent Linux jobs:
 
 - **Core journeys:** the headless runner typecheck and the PR journeys selected
-  by `pnpm --dir evals run test:core` (remembered thread approvals, effective
-  permission attribution, PDF model routing, and session-list routing).
+  by `pnpm --dir evals run test:core`.
 - **Packaging:** outbound-access declarations, the server's actual Node-target
   plugin build, Electron's IPC contract typecheck, and the packaged desktop
   smoke.
@@ -30,7 +30,7 @@ must be diagnosed and fixed, not retried until green or silently ignored.
 The test-framework checks (`pnpm evals:check`) also run on every PR in "Unit
 tests". Nightly at 07:37 UTC (or through **Run workflow** on a selected branch)
 the same workflow runs all PR specs (`pnpm evals:pr`, Linux, with MySQL and the
-bundled OpenCode binary) and the engine smoke (`pnpm test:e2e`, Linux and macOS).
+bundled OpenCode v2 binary).
 Packaging can be reproduced with `pnpm --filter openwork-server build` and
 `pnpm --filter @openwork/desktop typecheck:electron`. Check the macOS nightly
 before releases; it is not a PR prerequisite. The core journey and every
@@ -61,8 +61,7 @@ Sampled failure logs show different problems that need different fixes:
   failed on the same engine-retirement timing assertion seen in a
   [dev run](https://github.com/different-ai/openwork/actions/runs/33907568505).
   [PR #4439](https://github.com/different-ai/openwork/pull/4439) independently
-  repairs that race. Core coverage still exercises real engine eviction and
-  reload behavior; the broad test is retained.
+  repairs that race.
 - The separate [SDK check on #4442](https://github.com/different-ai/openwork/actions/runs/33916924365)
   failed when schema generation connected to MySQL at `127.0.0.1:3306` without a
   database. That is a setup dependency to fix in the SDK change, not a reason

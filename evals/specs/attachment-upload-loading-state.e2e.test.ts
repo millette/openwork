@@ -1,11 +1,9 @@
 import { browserScript } from "@openwork/testkit";
-import { resolveEvalEngine } from "@openwork/env";
 import { expect } from "vitest";
 import { spec } from "@openwork/testkit";
 import { attachmentUpload } from "../worlds/chat.ts";
 
 const attachmentName = "big-photo.png";
-const evalEngine = resolveEvalEngine();
 const test = spec.world(attachmentUpload, {
   needs: { commands: ["bun"] },
   timeout: 300_000,
@@ -177,9 +175,9 @@ test(`sending an image in ${entryPoint} immediately moves it into the thread whi
       within: 30_000,
       intervalMs: 50,
       label: "settled thread image keeps its element",
-      until: (value) => value === "server-copy" || (evalEngine === "v2" && value === "preview"),
+      until: (value) => value === "server-copy" || value === "preview",
     });
-    expect(settled === "server-copy" || (evalEngine === "v2" && settled === "preview")).toBe(true);
+    expect(settled === "server-copy" || settled === "preview").toBe(true);
   });
   await user.notSee({ text: /1 queued/ });
   expect((await probe.hash()).includes("/session/ses_")).toBe(true);

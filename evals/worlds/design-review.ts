@@ -73,7 +73,6 @@ async function captureRun(app: Surface, dir: string, title: string, gitSha: stri
     name: title,
     dir,
     gitSha,
-    engine: "v1",
     createdAt: at,
     closedAt: at,
     outcome: "passed",

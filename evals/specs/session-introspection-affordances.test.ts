@@ -7,6 +7,8 @@ import {
   buildOpenworkProviderContributions,
   sessionAffordanceArgsSchemas,
 } from "../../apps/server/src/opencode-plugins/openwork-provider-adapters";
+import { openworkReadTransport, type OpenworkReadTransport } from "../../apps/server/src/opencode-plugins/openwork-read-transport";
+import { createV2ReadAdapter, readV2SessionActivity } from "../../apps/server/src/opencode-v2-read-adapter";
 
 // Mirrors the audited inventory: one workspace with far more root sessions
 // than the default transcript scan window, the wanted session archived and
@@ -15,13 +17,14 @@ import {
 const ROOT_SESSIONS = 240;
 const PROBE_RANK = 177;
 const LONG_TRANSCRIPT = 300;
+const ENGINE = "/workspace/ws_1/opencode2/api";
 
-type Message = { info: { id: string; role: string; time: { created: number } }; parts: Array<{ type: string; text: string }> };
+type Message = { id: string; type: string; time: { created: number }; content: Array<{ type: string; text: string }> };
 
 function transcript(sessionId: string, count: number): Message[] {
   return Array.from({ length: count }, (_, index) => ({
-    info: { id: `${sessionId}_msg_${index}`, role: index % 2 === 0 ? "user" : "assistant", time: { created: 1_000_000 + index } },
-    parts: [{ type: "text", text: index === 0 ? "Investigate the model and effort introspection gap" : `Turn ${index}` }],
+    id: `${sessionId}_msg_${index}`, type: index % 2 === 0 ? "user" : "assistant", time: { created: 1_000_000 + index },
+    content: [{ type: "text", text: index === 0 ? "Investigate the model and effort introspection gap" : `Turn ${index}` }],
   }));
 }
 
@@ -31,7 +34,8 @@ const sessions = Array.from({ length: ROOT_SESSIONS }, (_, index) => {
   return {
     id: probe ? "ses_probe" : `ses_${rank}`,
     title: probe ? "variant probe 2 (safe to archive)" : `Routine task ${rank}`,
-    directory: "/tmp/openwork",
+    location: { directory: "/tmp/openwork" },
+    // OpenCode v2 cannot archive, but archived state survives the v1 history import.
     time: { created: 5_000_000 - rank * 1000, updated: 9_000_000 - rank * 1000, ...(probe ? { archived: 9_500_000 } : {}) },
   };
 });
@@ -40,17 +44,20 @@ const transcripts = new Map<string, Message[]>([
   ["ses_probe", transcript("ses_probe", 2)],
 ]);
 
-const originalEnv = { url: process.env.OPENWORK_SERVER_URL, token: process.env.OPENWORK_SERVER_TOKEN };
+/** One native page: `limit` rows from the cursor on, and the next cursor until the rows run out. */
+function page<T>(rows: T[], url: URL) {
+  const start = Number(url.searchParams.get("cursor") ?? 0);
+  const end = start + Number(url.searchParams.get("limit") ?? 200);
+  return { data: rows.slice(start, end), cursor: { next: end < rows.length ? String(end) : null } };
+}
+
 let stop: (() => Promise<void>) | null = null;
 afterEach(async () => {
   await stop?.();
   stop = null;
-  if (originalEnv.url === undefined) delete process.env.OPENWORK_SERVER_URL;
-  else process.env.OPENWORK_SERVER_URL = originalEnv.url;
-  if (originalEnv.token === undefined) delete process.env.OPENWORK_SERVER_TOKEN;
-  else process.env.OPENWORK_SERVER_TOKEN = originalEnv.token;
 });
 
+/** The OpenWork host and its OpenCode v2 mount, as the engine's context bridge reads them. */
 async function startFakeOpenWorkServer() {
   const requests: Array<{ pathname: string; search: string }> = [];
   const server = createServer((request, response) => {
@@ -62,33 +69,36 @@ async function startFakeOpenWorkServer() {
     };
     if (request.headers.authorization !== "Bearer test-token") return json(401, { message: "Unauthorized" });
     if (url.pathname === "/workspaces") return json(200, { items: [{ id: "ws_1", name: "openwork", path: "/tmp/openwork" }] });
-    if (url.pathname === "/workspace/ws_1/opencode/session") {
-      const limit = Number(url.searchParams.get("limit") ?? ROOT_SESSIONS);
-      return json(200, sessions.slice(0, limit));
-    }
-    const read = /^\/workspace\/ws_1\/opencode\/session\/([^/]+)$/.exec(url.pathname);
+    if (url.pathname === `${ENGINE}/session`) return json(200, page(sessions, url));
+    if (url.pathname === `${ENGINE}/session/active`) return json(200, { data: {} });
+    const read = /^\/workspace\/ws_1\/opencode2\/api\/session\/([^/]+)$/.exec(url.pathname);
     if (read) {
       const session = sessions.find((candidate) => candidate.id === read[1]);
-      return session ? json(200, session) : json(404, { message: "Not found" });
+      return session ? json(200, { data: session }) : json(404, { message: "Not found" });
     }
-    const messages = /^\/workspace\/ws_1\/opencode\/session\/([^/]+)\/message$/.exec(url.pathname);
-    if (messages) {
-      const all = transcripts.get(messages[1] ?? "") ?? [];
-      // Like the engine: `limit` returns the newest window, no limit returns everything.
-      const limit = url.searchParams.get("limit");
-      return json(200, limit === null ? all : all.slice(-Number(limit)));
-    }
-    if (url.pathname === "/workspace/ws_1/opencode/session/status") return json(200, {});
-    if (url.pathname.endsWith("/children") || url.pathname.endsWith("/permission") || url.pathname.endsWith("/question")) return json(200, []);
+    const messages = /^\/workspace\/ws_1\/opencode2\/api\/session\/([^/]+)\/message$/.exec(url.pathname);
+    // Like the engine: pages run newest first, so `limit` alone is the newest window.
+    if (messages) return json(200, page((transcripts.get(messages[1] ?? "") ?? []).toReversed(), url));
+    if (url.pathname.endsWith("/permission") || url.pathname.endsWith("/form")) return json(200, { data: [] });
     return json(404, { message: "Not found" });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("fake server did not bind a port");
   stop = () => new Promise<void>((resolve) => server.close(() => resolve()));
-  process.env.OPENWORK_SERVER_URL = `http://127.0.0.1:${address.port}`;
-  process.env.OPENWORK_SERVER_TOKEN = "test-token";
-  return { requests };
+  const base = `http://127.0.0.1:${address.port}`;
+  const read = async (path: string): Promise<unknown> => {
+    const response = await fetch(`${base}${path}`, { headers: { authorization: "Bearer test-token" } });
+    const body: unknown = await response.json();
+    if (!response.ok) throw new Error(`GET ${path} returned ${response.status}`);
+    return body;
+  };
+  const transport: OpenworkReadTransport = {
+    get: createV2ReadAdapter(read),
+    activity: (workspaceId, sessionId) => readV2SessionActivity(read, workspaceId, sessionId),
+    post: async (path) => { throw new Error(`Unexpected host write ${path}`); },
+  };
+  return { requests, transport };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -112,11 +122,14 @@ function ids(result: Record<string, unknown>): string[] {
   return records(result.results).map((entry) => String(entry.sessionId));
 }
 
-async function plugin() {
+/** The read affordances as OpenCode v2 runs them: inside the context bridge's read transport. */
+async function plugin(transport: OpenworkReadTransport) {
   const instance = await OpenWorkExtensionsPreview();
+  const query = (id: string, args: Record<string, unknown>) =>
+    openworkReadTransport.run(transport, () => instance.tool.openwork_query.execute({ id, args }));
   return {
-    search: async (args: Record<string, unknown>) => resultOf(await instance.tool.openwork_query.execute({ id: "session.search", args }), "session.search"),
-    read: async (args: Record<string, unknown>) => resultOf(await instance.tool.openwork_query.execute({ id: "session.read", args }), "session.read"),
+    search: async (args: Record<string, unknown>) => resultOf(await query("session.search", args), "session.search"),
+    read: async (args: Record<string, unknown>) => resultOf(await query("session.read", args), "session.read"),
   };
 }
 
@@ -146,7 +159,7 @@ test("session.search advertises every schema argument so agents can widen a trun
 
 test("session.search finds a session by title far beyond the default scan window and reports the window honestly", async ({ evidence }) => {
   const fake = await startFakeOpenWorkServer();
-  const { search } = await plugin();
+  const { search } = await plugin(fake.transport);
 
   const byDefault = await search({ query: "variant probe" });
   const widened = await search({ query: "variant probe", scanLimit: 500 });
@@ -162,7 +175,9 @@ test("session.search finds a session by title far beyond the default scan window
   expect(ids(widened)).toEqual(["ses_probe"]);
   // Title matching never cost a transcript read for sessions outside the window.
   expect(transcriptReads.filter((request) => request.pathname.includes("ses_probe")).length).toBe(1);
-  expect(fake.requests.some((request) => request.pathname === "/workspace/ws_1/opencode/session" && request.search === "?roots=true&limit=100")).toBe(false);
+  // Each search listed every root session, following the native cursor past the first page.
+  expect(fake.requests.filter((request) => request.pathname === `${ENGINE}/session`).map((request) => request.search))
+    .toEqual(["?limit=200", "?limit=200&cursor=200", "?limit=200", "?limit=200&cursor=200"]);
   evidence.recordAssertionEvidence(
     "Title phase covers every root session; scanLimit only bounds transcripts",
     `Default search scanned 100/${ROOT_SESSIONS} transcripts (truncated: true) and still returned the archived probe at rank ${PROBE_RANK} by title; scanLimit 500 scanned ${ROOT_SESSIONS}/${ROOT_SESSIONS} (truncated: false) with the same single hit.`,
@@ -171,8 +186,8 @@ test("session.search finds a session by title far beyond the default scan window
 });
 
 test("session.search match, time and archived filters narrow results instead of OR-ing terms", async ({ evidence }) => {
-  await startFakeOpenWorkServer();
-  const { search } = await plugin();
+  const fake = await startFakeOpenWorkServer();
+  const { search } = await plugin(fake.transport);
   const found = async (args: Record<string, unknown>) => ids(await search(args));
 
   // "probe" is only in the probe title; "introspection" only in ses_1's first message.
@@ -194,7 +209,7 @@ test("session.search match, time and archived filters narrow results instead of 
 
 test("session.read reads from the start of a long transcript and summarizes asked/concluded in one call", async ({ evidence }) => {
   const fake = await startFakeOpenWorkServer();
-  const { read } = await plugin();
+  const { read } = await plugin(fake.transport);
 
   const tail = await read({ sessionId: "ses_1", count: 2 });
   const head = await read({ sessionId: "ses_1", count: 2, from: "start" });
@@ -212,8 +227,9 @@ test("session.read reads from the start of a long transcript and summarizes aske
   });
   expect(summary.messages).toBeUndefined();
   expect(probe).toMatchObject({ archived: true, totalMessages: 2 });
-  // The tail read asked the engine for a window; start and summary loaded the whole transcript.
-  expect(fake.requests.filter((request) => request.pathname === "/workspace/ws_1/opencode/session/ses_1/message").map((request) => request.search)).toEqual(["?limit=2", "", ""]);
+  // The tail read asked the engine for a window; start and summary paged through the whole transcript.
+  expect(fake.requests.filter((request) => request.pathname === `${ENGINE}/session/ses_1/message`).map((request) => request.search))
+    .toEqual(["?limit=2", "?limit=200", "?limit=200&cursor=200", "?limit=200", "?limit=200&cursor=200"]);
   evidence.recordAssertionEvidence(
     "from=start reaches the true first message; summary returns first user + last assistant only",
     `On a ${LONG_TRANSCRIPT}-message session, count 2 from end returned the last two, from start returned msg_0 and msg_1, and summary returned firstUser=msg_0 / lastAssistant=msg_${LONG_TRANSCRIPT - 1} with no messages array.`,

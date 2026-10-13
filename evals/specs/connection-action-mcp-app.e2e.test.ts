@@ -29,6 +29,46 @@ function rows(value: unknown): Record<string, unknown>[] {
   return value.map(record);
 }
 
+type Turn = { id: unknown; role: unknown; parts: Record<string, unknown>[] };
+
+/** An OpenCode v2 message page (`{ data }`, newest first), oldest first. */
+function turns(value: unknown): Turn[] {
+  return rows(record(value).data).reverse().map(message => ({
+    id: message.id,
+    role: message.role ?? message.type,
+    parts: Array.isArray(message.content) ? rows(message.content)
+      : typeof message.text === "string" ? [{ type: "text", text: message.text }] : [],
+  }));
+}
+
+/** Pending native question forms, in the shape the question tool was asked with. */
+function questionRequests(value: unknown) {
+  return rows(record(value).data).filter(form => isRecord(form.metadata) && form.metadata.kind === "question").map(form => ({
+    id: form.id,
+    sessionID: form.sessionID,
+    questions: rows(form.fields).map(field => ({
+      header: field.title ?? "",
+      question: field.description ?? field.title ?? "",
+      options: Array.isArray(field.options) ? rows(field.options).map(option => ({ label: option.label, description: option.description ?? "" })) : [],
+      multiple: field.type === "multiselect",
+      custom: field.custom !== false,
+    })),
+  }));
+}
+
+function toolName(part: Record<string, unknown>): unknown {
+  return part.name ?? part.tool;
+}
+
+/** The text a completed native tool returned. */
+function toolOutput(state: Record<string, unknown>): string | null {
+  if (state.status !== "completed") return null;
+  const text = Array.isArray(state.content)
+    ? rows(state.content).flatMap(item => item.type === "text" && typeof item.text === "string" ? [item.text] : []) : [];
+  if (text.length) return text.join("\n");
+  return typeof state.result === "string" ? state.result : state.result === undefined ? null : JSON.stringify(state.result);
+}
+
 function toolPayload(part: Record<string, unknown>) {
   const state = record(part.state);
   expect(state.status).toBe("completed");
@@ -38,15 +78,19 @@ function toolPayload(part: Record<string, unknown>) {
     expect(result.isError).not.toBe(true);
     if (isRecord(result.structuredContent)) return result.structuredContent;
   }
-  if (typeof state.output !== "string") throw new Error("The completed tool has no output");
-  return record(JSON.parse(state.output));
+  const output = toolOutput(state);
+  if (output === null) throw new Error("The completed tool has no output");
+  return record(JSON.parse(output));
 }
 
-function turnTools(messages: Record<string, unknown>[], prompt: string) {
-  const start = messages.findLastIndex(message => record(message.info).role === "user"
-    && rows(message.parts).some(part => part.type === "text" && part.text === prompt));
+function hasText(turn: Turn, text: string | null) {
+  return turn.parts.some(part => part.type === "text" && part.text === text);
+}
+
+function turnTools(messages: Turn[], prompt: string) {
+  const start = messages.findLastIndex(message => message.role === "user" && hasText(message, prompt));
   expect(start, "The exact user task must exist in the engine transcript").toBeGreaterThanOrEqual(0);
-  return messages.slice(start + 1).flatMap(message => rows(message.parts)).filter(part => part.type === "tool");
+  return messages.slice(start + 1).flatMap(message => message.parts).filter(part => part.type === "tool");
 }
 
 const journeys = [
@@ -58,18 +102,18 @@ const journeys = [
 
 test("a member can Authenticate or Skip in the native connection card and continue the original task", async ({ world, agent, user, probe, evidence, step }) => {
   const connector = world.den.mocks.connector;
-  const mount = `/workspace/${encodeURIComponent(world.workspace.workspaceId)}/opencode`;
+  const mount = `/workspace/${encodeURIComponent(world.workspace.workspaceId)}/opencode2/api`;
   let sessionId = world.session.sessionId;
   const sessionPath = () => `${mount}/session/${encodeURIComponent(sessionId)}`;
   const messages = async () => {
       const response = await probe.desktopApi(`${sessionPath()}/message`);
       expect(response.status, JSON.stringify(response.body)).toBe(200);
-      return rows(response.body);
+      return turns(response.body);
     };
     const pending = async () => {
-      const response = await probe.desktopApi(`${mount}/question`);
+      const response = await probe.desktopApi(`${mount}/form`);
       expect(response.status).toBe(200);
-      return rows(response.body).filter(request => request.sessionID === sessionId);
+      return questionRequests(response.body).filter(request => request.sessionID === sessionId);
     };
     const modelCalls = (prompt: string) => connector.agentRequests({ promptMarker: prompt });
     /** The native card in the transcript: its state line and its verb buttons, read from the outer document (no iframe). */
@@ -145,8 +189,7 @@ test("a member can Authenticate or Skip in the native connection card and contin
       await probe.eventually(messages, {
         within: 30_000,
         label: "The connection request appears in the conversation",
-        until: transcript => transcript.some(message => record(message.info).role === "user"
-          && rows(message.parts).some(part => part.type === "text" && part.text === entry.prompt)),
+        until: transcript => transcript.some(message => message.role === "user" && hasText(message, entry.prompt)),
       }).catch(async error => {
         await user.screenshot();
         evidence.recordAssertionEvidence("Connection request submission diagnostics", JSON.stringify({ screen: await probe.text(), transcript: await messages() }), false);
@@ -198,7 +241,7 @@ test("a member can Authenticate or Skip in the native connection card and contin
       expect(tools).toHaveLength(expectedTools.length);
       expect(calls).toHaveLength(expectedTools.length);
       for (const [index, name] of expectedTools.entries()) {
-        expect(tools[index]?.tool).toMatch(new RegExp(`${name}$`));
+        expect(toolName(tools[index] ?? {})).toMatch(new RegExp(`${name}$`));
         expect(calls[index]?.toolName).toMatch(new RegExp(`${name}$`));
       }
       const payload = toolPayload(tools[0]);
@@ -225,7 +268,7 @@ test("a member can Authenticate or Skip in the native connection card and contin
     });
 
     const beforeDecision = await messages();
-    const usersBefore = beforeDecision.filter(message => record(message.info).role === "user");
+    const usersBefore = beforeDecision.filter(message => message.role === "user");
     const callsBefore = (await modelCalls(entry.prompt)).filter(call => call.kind === "tool");
     const settledLine = entry.choice === "Skip" ? "Skipped Notion" : "Notion connected";
     await step(`${entry.choice} completes in the native card and agrees with observed connection status`, async () => {
@@ -267,7 +310,7 @@ test("a member can Authenticate or Skip in the native connection card and contin
       expect(await connector.toolCalls()).toEqual([]);
       expect(await pending()).toEqual([]);
       expect((await modelCalls(entry.prompt)).filter(call => call.kind === "tool")).toEqual(callsBefore);
-      expect((await messages()).filter(message => record(message.info).role === "user")).toEqual(usersBefore);
+      expect((await messages()).filter(message => message.role === "user")).toEqual(usersBefore);
       for (const text of ["Task interrupted", "MessageAbortedError", "Turn stopped. Nothing retried."]) await user.notSee({ text });
       await user.screenshot();
       evidence.recordAssertionEvidence("Native card decision agrees with Den", JSON.stringify({ choice: entry.choice, status: status.structuredContent, authorizationRequests: oauth.filter(request => request.path === "/authorize").length }), true);
@@ -277,11 +320,10 @@ test("a member can Authenticate or Skip in the native connection card and contin
       await user.see({ text: settledLine });
       const continued = await probe.eventually(async () => {
         const transcript = await messages();
-        const question = turnTools(transcript, entry.prompt).find(part => part.tool === "question");
+        const question = turnTools(transcript, entry.prompt).find(part => toolName(part) === "question");
         const state = question && record(question.state);
-        const output = state?.status === "completed" && typeof state.output === "string" ? state.output : null;
-        const final = transcript.find(message => record(message.info).role === "assistant"
-          && rows(message.parts).some(part => part.type === "text" && part.text === output));
+        const output = state ? toolOutput(state) : null;
+        const final = transcript.find(message => message.role === "assistant" && hasText(message, output));
         return { transcript, output, final, calls: await modelCalls(entry.prompt) };
       }, {
         within: 30_000,
@@ -293,7 +335,7 @@ test("a member can Authenticate or Skip in the native connection card and contin
         expect.objectContaining({ completedTools: entry.tools.length + 1 }),
       ]);
       await user.see({ text: continued.output ?? "Missing question result" });
-      expect(continued.transcript.filter(message => record(message.info).role === "user")).toEqual(usersBefore);
+      expect(continued.transcript.filter(message => message.role === "user")).toEqual(usersBefore);
       expect(continued.calls.filter(call => call.kind === "tool")).toEqual(callsBefore);
       expect(continued.calls.filter(call => call.kind === "error")).toEqual([]);
       expect(await pending()).toEqual([]);

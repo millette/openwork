@@ -53,8 +53,7 @@ test("v2 uses an MCP added through OpenWork on the next call and removes it in t
       options: { baseURL: `${den.mocks.witness.url}/v1`, apiKey: "eval-only-key" },
       models: { "mock-agent-workload-model": { name: "Reload Witness", tool_call: true } } },
   } } })).status).toBe(200);
-  expect((await request(desktop, "/experimental/engine-v2-preview", "PUT", { enabled: true, chatRouting: true })).status).toBe(200);
-  const status = await eventually(async () => (await request(desktop, "/experimental/engine-v2-preview/status")).json, {
+  const status = await eventually(async () => (await request(desktop, "/engine/status")).json, {
     within: 180_000, intervalMs: 1_000, label: "v2 provider and process ready",
     until: (value) => record(value) && value.running === true && Array.isArray(value.mirroredProviderIds) && value.mirroredProviderIds.includes(providerId),
   });
@@ -95,7 +94,7 @@ test("v2 uses an MCP added through OpenWork on the next call and removes it in t
         + "Do not use files, shell, environment variables, or the internet. Return the report code briefly.");
       if (useTool && !unavailable) expect(result.text).toContain(nonce);
       else expect(result.text).toMatch(/unavailable/i);
-      const next = (await api("/experimental/engine-v2-preview/status")).json;
+      const next = (await api("/engine/status")).json;
       expect(record(next) ? next.pid : null).toBe(pid);
       return result;
     }
@@ -161,7 +160,7 @@ test("v2 uses an MCP added through OpenWork on the next call and removes it in t
         }]);
       }
     }
-    const next = (await request(desktop, "/experimental/engine-v2-preview/status")).json;
+    const next = (await request(desktop, "/engine/status")).json;
     expect(record(next) ? next.pid : null).toBe(pid);
     return { messages, sinceIso };
   }
@@ -247,6 +246,7 @@ test("v2 uses an MCP added through OpenWork on the next call and removes it in t
       : "Fresh native Code Mode results contained completed inner calls and the witness nonce after reconnect and re-enable; removed and disabled attempts returned the native error flag and exact native unknown-tool error, with no witness invocations. ")
     + "Two reconnect/disable/enable/remove cycles served actual MCP calls only while enabled, with the original session and process. The credential was absent from all observed public responses.", true);
   expect((await api(`${root}/mcp/empty-witness`, "DELETE")).status).toBe(200);
-  expect((await request(desktop, `${root}/opencode/global/health`)).status).toBe(200);
-  evidence.recordAssertionEvidence("removal reaches the next call and v1 remains available", (live ? "Real OpenAI reported UNAVAILABLE after DELETE; " : "A fresh Code Mode attempt to invoke the removed tool returned the native error flag and exact native unknown-tool error after DELETE; ") + "the native catalog no longer contained the connection and the original conversation served no new MCP calls. The same v2 process and the v1 health endpoint remained available. Direct v2 MCP mutation was denied.", true);
+  const after = (await request(desktop, "/engine/status")).json;
+  expect(record(after) ? after.pid : null).toBe(pid);
+  evidence.recordAssertionEvidence("removal reaches the next call and the engine stays up", (live ? "Real OpenAI reported UNAVAILABLE after DELETE; " : "A fresh Code Mode attempt to invoke the removed tool returned the native error flag and exact native unknown-tool error after DELETE; ") + "the native catalog no longer contained the connection and the original conversation served no new MCP calls. The same engine process remained available. Direct v2 MCP mutation was denied.", true);
 });

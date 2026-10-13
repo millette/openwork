@@ -90,7 +90,6 @@ test.skipIf(!enabled)(title, { timeout: 10 * 60_000 }, async ({ evidence, place 
     const maxButtons = Math.max(...buttonCounts);
     const observed = {
       denEvents: window.__libraryStability.denEvents,
-      providerConfigReads: count("/opencode/config?"),
       providerSyncStatusReads: count("/cloud-provider-sync/status"),
       providerSyncRuns: count("/cloud-provider-sync/run"),
       inventoryStayedVisible,
@@ -100,7 +99,6 @@ test.skipIf(!enabled)(title, { timeout: 10 * 60_000 }, async ({ evidence, place 
     return {
       ...observed,
       stable: observed.denEvents <= 1
-        && observed.providerConfigReads <= 2
         && observed.providerSyncStatusReads <= 2
         && observed.providerSyncRuns <= 1
         && observed.inventoryStayedVisible
@@ -117,7 +115,6 @@ test.skipIf(!enabled)(title, { timeout: 10 * 60_000 }, async ({ evidence, place 
     stable: true,
     inventoryStayedVisible: true,
     denEvents: expect.any(Number),
-    providerConfigReads: expect.any(Number),
     providerSyncStatusReads: expect.any(Number),
   });
 });

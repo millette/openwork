@@ -1,6 +1,6 @@
 import { browserScript, reload } from "@openwork/cdp";
 import { CATALOG_FAST_VARIANT } from "@openwork/types/cloud-model-fast";
-import { resolveEvalEngine, type Seed } from "@openwork/env";
+import type { Seed } from "@openwork/env";
 
 import { configureProvider } from "./chat.ts";
 
@@ -13,7 +13,6 @@ import { configureProvider } from "./chat.ts";
  * workspace no longer offers, so the failure path is real catalog state.
  */
 export async function modelShortcutsWeb(seed: Seed) {
-  const engine = resolveEvalEngine();
   const providerId = "effort-witness";
   const modelId = "reasoning-model";
   const fastProviderId = "fast-witness";
@@ -43,7 +42,7 @@ export async function modelShortcutsWeb(seed: Seed) {
         [CATALOG_FAST_VARIANT]: { disabled: true, openworkNativeFast: 1 },
       } } },
     },
-  } }, engine);
+  } });
   const session = await seed.session(app, { title: "Model shortcuts" });
   const retired = {
     id: "sc_retired",
@@ -60,7 +59,7 @@ export async function modelShortcutsWeb(seed: Seed) {
   // The chord a person presses depends on the OS: Cmd on macOS, Ctrl elsewhere.
   const mac = await seed.evalIn(app, () => /Mac|iPhone|iPad|iPod/.test(navigator.platform));
   return {
-    app, engine, workspace, session, providerId, modelId, fastProviderId, fastModelId,
+    app, workspace, session, providerId, modelId, fastProviderId, fastModelId,
     /** Primary modifier for key presses on this platform. */
     mod: mac ? "Meta" : "Control",
     /** The default Fast toggle key on this platform. */

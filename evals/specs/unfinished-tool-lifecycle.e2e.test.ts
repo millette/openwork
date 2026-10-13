@@ -63,7 +63,7 @@ test("STOP-01 unfinished current-turn tools expose Stop feedback and active, wai
     expect(pending.elapsedMs).toBeLessThan(100);
     evidence.recordAssertionEvidence(
       "Stop shows pending UI within 100ms and suppresses duplicate mouse and keyboard attempts",
-      JSON.stringify({ engine: world.engine, ...pending }),
+      JSON.stringify(pending),
       true,
     );
   });

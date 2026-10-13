@@ -3,15 +3,14 @@ import type { Target } from "@openwork/cdp";
 import { spec } from "@openwork/testkit";
 import { notificationCenter } from "../worlds/notification-center.ts";
 
-// Keep the existing Electron archive/undo regression; member-activity-sync uses
+// Keep the existing Electron background-event regression; member-activity-sync uses
 // appWeb for the new member inventory story without a native dependency.
 const test = spec.world(notificationCenter, {
-  resources: { surfaces: ["desktop"], services: [], nativeReason: "Preserves the existing desktop archive confirmation and background-event integration regression." },
+  resources: { surfaces: ["desktop"], services: [], nativeReason: "Preserves the existing desktop background-event integration regression." },
 });
 
 const bell: Target = { role: "button", label: /^Activity/ };
 const emptyTitle: Target = { text: "Nothing new" };
-const undoButton: Target = { role: "button", label: "Undo" };
 
 type ListedNotification = { kind: string; title: string; readAt: number | null; count: number; actionType: string | null };
 
@@ -32,8 +31,7 @@ function listed(value: unknown): ListedNotification[] {
   });
 }
 
-test("Activity holds only member changes; device notices and action confirmations stay out of it", async ({ world, user, agent, probe, step, evidence }) => {
-  const candidateId = world.candidate.sessionId;
+test("Activity holds only member changes; device notices stay out of it", async ({ world, user, agent, probe, step, evidence }) => {
   const center = async () => listed(await agent.run("notifications.list"));
   const closeCenter = async () => {
     await user.press("Escape");
@@ -58,28 +56,6 @@ test("Activity holds only member changes; device notices and action confirmation
     await user.screenshot();
     await closeCenter();
   });
-
-  if (world.engine !== "v2") {
-    await step("archiving a conversation confirms with Undo without adding Activity", async () => {
-      const archiveButton: Target = { role: "button", label: "Archive session", testId: `session-archive-${candidateId}` };
-      await user.hover({ testId: `sidebar-session-${candidateId}` });
-      await user.click(archiveButton);
-      await user.see({ text: `Session archived: ${world.candidate.title}` }, { timeoutMs: 30_000 });
-      await user.see(undoButton);
-      const stamps = await probe.eventually(() => world.archivedAt(), {
-        within: 30_000, label: "conversation archived on the server", until: (value) => value[candidateId] > 0,
-      });
-      expect(await center()).toEqual([]);
-      await quietBell();
-      evidence.recordAssertionEvidence("Archive stays toast-only", `Archived timestamp ${stamps[candidateId]}; 0 Activity entries; Undo is visible`, stamps[candidateId] > 0);
-      await user.screenshot();
-      await user.click(undoButton);
-      await probe.eventually(() => world.archivedAt(), {
-        within: 30_000, label: "Undo restores the conversation", until: (value) => value[candidateId] === 0,
-      });
-      expect(await center()).toEqual([]);
-    });
-  }
 
   await step("after: device notices such as model or reload updates do not enter Activity", async () => {
     expect(await world.providerSync([{ id: "eng-278-sync-a", name: "Activity provider A", providerId: "eng-278-a" }])).toBe(1);

@@ -30,8 +30,10 @@ test("the Library lists MCP servers written by hand into opencode.json, whicheve
     await user.see({ text: "Library" });
     await user.click({ role: "button", label: "All" });
     await probe.eventually(async () => {
-      const status = await probe.desktopApi(`/workspace/${encodeURIComponent(world.workspace.workspaceId)}/opencode/mcp`);
-      expect(status).toMatchObject({ status: 200, body: { "ready-helper": { status: "connected" } } });
+      const status = await probe.desktopApi(`/workspace/${encodeURIComponent(world.workspace.workspaceId)}/opencode2/api/mcp`);
+      expect(status).toMatchObject({ status: 200, body: { data: expect.arrayContaining([
+        expect.objectContaining({ name: "ready-helper", status: expect.objectContaining({ status: "connected" }) }),
+      ]) } });
       return true;
     }, { within: 60_000, label: "ready-helper connected in the workspace engine" });
     await probe.eventually(async () => {

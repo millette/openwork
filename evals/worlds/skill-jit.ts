@@ -153,9 +153,6 @@ export async function skillJitWeb(seed: Seed, context: { place: Place }) {
     sharedTokens.set(scope, issued.json.token);
   }
 
-  // Native v2 conversation regardless of the inherited engine selector.
-  const preview = await request("/experimental/engine-v2-preview", { method: "PUT", body: { enabled: true, chatRouting: true }, timeoutMs: 180_000 });
-  if (preview.status !== 200) throw new Error(`Could not enable the native engine: ${preview.status} ${preview.text.slice(0, 300)}`);
   await configureProvider(seed, app, workspace.workspaceId, providerId, modelId, {
     permission: { skill: "allow" },
     provider: {
@@ -166,7 +163,7 @@ export async function skillJitWeb(seed: Seed, context: { place: Place }) {
         models: { [modelId]: { name: "Skill JIT model", tool_call: true } },
       },
     },
-  }, "v2");
+  });
   const session = await createSession(seed, app, "Amber release report");
   const nativeSkillPath = `/workspace/${encodeURIComponent(workspace.workspaceId)}/opencode2/api/skill`;
   const cloudMcpPath = `/workspace/${encodeURIComponent(workspace.workspaceId)}/mcp/openwork-cloud`;
@@ -189,7 +186,6 @@ export async function skillJitWeb(seed: Seed, context: { place: Place }) {
     workspaceRoot: workspacePath,
     /** The signed-in eval user's real home; nothing engine-private may land there. */
     realHome: homedir(),
-    engine: "v2" as const,
     providerId,
     modelId,
     cloud,
@@ -274,8 +270,8 @@ export async function skillJitWeb(seed: Seed, context: { place: Place }) {
     },
     /** PID of the running v2 conversation runtime. */
     async runtimeIdentity(): Promise<number> {
-      const result = await request("/experimental/engine-v2-preview/status");
-      if (!isRecord(result.json) || result.json.running !== true || result.json.chatRouting !== true || typeof result.json.pid !== "number") {
+      const result = await request("/engine/status");
+      if (!isRecord(result.json) || result.json.running !== true || typeof result.json.pid !== "number") {
         throw new Error("The v2 conversation runtime is not running");
       }
       return result.json.pid;

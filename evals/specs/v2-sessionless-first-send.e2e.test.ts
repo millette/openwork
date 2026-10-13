@@ -1,19 +1,17 @@
 import { expect } from "vitest";
-import { browserScript, resolveEvalEngine, spec } from "@openwork/testkit";
+import { browserScript, spec } from "@openwork/testkit";
 import { sessionlessFirstSendWorld } from "../worlds/first-run.ts";
 import { mobileChatInteractionWorld } from "../worlds/first-run.ts";
 import { mobileChatGeometry, simulateKeyboardViewport } from "../worlds/mobile-chat-viewport.ts";
 import { setViewport } from "@openwork/cdp";
 import { localSendDenOutageWorld } from "../worlds/local-send-den-outage.ts";
 
-const engine = resolveEvalEngine({ OPENWORK_EVAL_ENGINE: process.env.OPENWORK_EVAL_ENGINE?.trim() || "v2" });
-
-const test = spec.world((seed) => sessionlessFirstSendWorld(seed, { engine }), {
+const test = spec.world(sessionlessFirstSendWorld, {
   timeout: 420_000,
   resources: { surfaces: ["appWeb"], services: ["mock"] },
 });
 
-const mobileTest = spec.world((seed) => mobileChatInteractionWorld(seed, { engine }), {
+const mobileTest = spec.world(mobileChatInteractionWorld, {
   timeout: 600_000,
   resources: { surfaces: ["appWeb"], services: ["mock"] },
 });
@@ -76,11 +74,9 @@ mobileTest("MOBILE-CHAT-01 keyboard geometry and new turns keep a stable chat la
     expect(modelSearch.inputs.some((input) => input.focused)).toBe(false);
     await user.looks(["At phone width, the model picker shows a readable search field, the model list and Connect more providers / All models actions inside the viewport."]);
     await user.click({ role: "button", label: "Connect more providers" });
-    if (engine === "v2") {
-      // The v2 chat client cannot list provider sign-in methods, so the picker falls back to
-      // Settings › AI Providers (session-route.tsx), where Connect a provider uses the local engine.
-      await user.click({ role: "button", label: "Connect a provider" });
-    }
+    // The chat client cannot list provider sign-in methods, so the picker falls back to
+    // Settings › AI Providers (session-route.tsx), where Connect a provider uses the local engine.
+    await user.click({ role: "button", label: "Connect a provider" });
     await user.see({ placeholder: "Filter providers by name or ID" });
     const providerSearch = await probe.eventually(pickerFocus, {
       within: 10_000, label: "mobile provider dialog focuses its title, not search",
@@ -108,11 +104,9 @@ mobileTest("MOBILE-CHAT-01 keyboard geometry and new turns keep a stable chat la
     // CDP's mouse clicks can open the restored model trigger's focus tooltip.
     // Dismiss it before the separate simulated-keyboard/composer interaction.
     await user.press("Escape");
-    if (engine === "v2") {
-      await user.click({ role: "button", label: "Toggle Sidebar" });
-      await user.click({ role: "button", label: "Back to app" });
-      await user.see("composer", { editable: true });
-    }
+    await user.click({ role: "button", label: "Toggle Sidebar" });
+    await user.click({ role: "button", label: "Back to app" });
+    await user.see("composer", { editable: true });
     expect(await world.route()).toBe(routeBefore);
     expect((await probe.composer()).draftText).toBe("");
     expect(await world.requests()).toHaveLength(0);
@@ -260,7 +254,7 @@ const outageTest = spec.world(localSendDenOutageWorld, {
   needs: { placement: "local" },
 });
 
-outageTest("DEN-LOCAL-SEND configured v1 identity sends to inference while Den is unavailable", async ({ world, user, probe, evidence }) => {
+outageTest("DEN-LOCAL-SEND configured identity sends to inference while Den is unavailable", async ({ world, user, probe, evidence }) => {
   await world.openNewTask();
   expect(world.hostedServerIdentityInstalled).toBe(true);
   expect(world.rendererCloudSignedIn).toBe(false);
@@ -280,7 +274,7 @@ outageTest("DEN-LOCAL-SEND configured v1 identity sends to inference while Den i
   await user.press("Enter");
   const prefix = `${world.sessionlessRoute}/`;
   const route = await probe.eventually(() => world.route(), {
-    within: 30_000, label: "persisted v1 session route during Den outage",
+    within: 30_000, label: "persisted session route during Den outage",
     until: (value) => value.startsWith(prefix) && /^ses_[^/?#]+$/.test(value.slice(prefix.length)),
   });
   const sessionId = route.slice(prefix.length);
@@ -307,7 +301,7 @@ outageTest("DEN-LOCAL-SEND configured v1 identity sends to inference while Den i
     });
   }
   const native = await probe.eventually(() => world.readNative(world.messagesPath(sessionId)), {
-    within: 20_000, label: "native v1 persists the inference reply",
+    within: 20_000, label: "the engine persists the inference reply",
     until: (response) => response.status === 200 && nativeMessages(response.body)
       .some((message) => message.role === "assistant" && message.text.includes(world.reply)),
   });
@@ -326,7 +320,7 @@ outageTest("DEN-LOCAL-SEND configured v1 identity sends to inference while Den i
     rendererCloudSignedIn: world.rendererCloudSignedIn,
     before: denBefore, after: world.denRequests(), sessionId,
   });
-  evidence.recordAssertionEvidence("Configured local v1 inference does not preflight Den",
+  evidence.recordAssertionEvidence("Configured local inference does not preflight Den",
     "Host-side Den identity installed against healthy policy; renderer is not Cloud-signed-in. After explicit Den 503 probe, real Enter submission persisted one prompt and its visible reply through exactly one marker-matched mock final request, with no further Den requests.", true);
 });
 
@@ -340,17 +334,12 @@ function nativeItems(body: unknown): unknown[] {
   throw new Error(`Unexpected native list: ${JSON.stringify(body)}`);
 }
 
-/**
- * Engine-native message list, normalized the way the app reads each engine:
- * v1 returns an array of `{ info: { role }, parts: [{ text }] }`; v2 returns
- * `{ data: [{ role | type, content: [{ text }] | text }] }`.
- */
+/** Engine-native message list: `{ data: [{ role | type, content: [{ text }] | text }] }`. */
 function nativeMessages(body: unknown): { role: string; text: string }[] {
   return nativeItems(body).flatMap((message) => {
     if (!isRecord(message)) return [];
-    const info = isRecord(message.info) ? message.info : message;
-    const role = typeof info.role === "string" ? info.role : typeof info.type === "string" ? info.type : "";
-    const parts = Array.isArray(message.parts) ? message.parts : Array.isArray(message.content) ? message.content : [message];
+    const role = typeof message.role === "string" ? message.role : typeof message.type === "string" ? message.type : "";
+    const parts = Array.isArray(message.content) ? message.content : [message];
     return [{ role, text: parts.map(textOf).join("\n") }];
   });
 }
@@ -359,8 +348,8 @@ function nativeSessionIds(body: unknown): string[] {
   return nativeItems(body).flatMap((session) => isRecord(session) && typeof session.id === "string" ? [session.id] : []).sort();
 }
 
-test(`${engine}: Run task on the sessionless New task route creates the session and delivers the first prompt`, async ({ world, user, probe, step, evidence }) => {
-  const { prompt, engine } = world;
+test("Run task on the sessionless New task route creates the session and delivers the first prompt", async ({ world, user, probe, step, evidence }) => {
+  const { prompt } = world;
   const persistedPrefix = `${world.sessionlessRoute}/`;
   const readSessions = async () => {
     const response = await world.readNative(world.sessionsPath);
@@ -370,10 +359,9 @@ test(`${engine}: Run task on the sessionless New task route creates the session 
 
   await step("the person lands on the sessionless New task route with an empty, editable composer", async () => {
     await world.openNewTask();
-    const routing = await world.readNative("/experimental/engine-v2-preview/status");
-    expect(routing.status).toBe(200);
-    expect(routing.body).toMatchObject({ chatRouting: engine === "v2" });
-    if (engine === "v2") expect(routing.body).toMatchObject({ enabled: true, running: true });
+    const status = await world.readNative("/engine/status");
+    expect(status.status).toBe(200);
+    expect(status.body).toMatchObject({ running: true });
     expect(await world.route()).toBe(world.sessionlessRoute);
     await user.see("composer", { editable: true });
     const composer = await probe.eventually(() => probe.composer(), {
@@ -390,7 +378,7 @@ test(`${engine}: Run task on the sessionless New task route creates the session 
   await step("creation failure keeps the sent message in the conversation with Retry and creates no session", async () => {
     await user.type("composer", prompt);
     await using rejected = await world.transition(evidence.dir);
-    evidence.recordJsonArtifact("Creation failure recording", { engine, path: rejected.filmPath });
+    evidence.recordJsonArtifact("Creation failure recording", { path: rejected.filmPath });
     await user.press("Enter");
     await probe.eventually(() => rejected.read(), {
       within: 10_000, label: "creation held before rejection", until: (state) => state.held === 1,
@@ -431,7 +419,7 @@ test(`${engine}: Run task on the sessionless New task route creates the session 
   });
 
   await using transition = await world.transition(evidence.dir);
-  evidence.recordJsonArtifact("Sessionless transition recording", { engine, path: transition.filmPath });
+  evidence.recordJsonArtifact("Sessionless transition recording", { path: transition.filmPath });
   await user.looks([
     "The 'What do you need done?' hero heading is visible above a composer containing the prompt beginning 'Summarize this workspace in one sentence.'.",
     "There is no creation error, Starting indicator, or submitted user-message bubble above the populated composer.",
@@ -487,7 +475,7 @@ test(`${engine}: Run task on the sessionless New task route creates the session 
   const sessionId = hash.slice(persistedPrefix.length);
   expect(sessionId).toMatch(/^ses_[^/?#]+$/);
 
-  await step(`the ${engine} first send clears the composer and reaches both thread and engine`, async () => {
+  await step("the first send clears the composer and reaches both thread and engine", async () => {
     await user.see("composer", { text: "" });
     // Observe BOTH boundaries even on a regression: a missing visible message
     // must not short-circuit the native probe and hide the empty engine list.
@@ -497,14 +485,14 @@ test(`${engine}: Run task on the sessionless New task route creates the session 
       probe.eventually(() => world.readNative(path), {
         within: 20_000,
         intervalMs: 1_000,
-        label: `${engine} engine user message for ${sessionId}`,
+        label: `engine user message for ${sessionId}`,
         until: (response) => response.status === 200 && nativeMessages(response.body)
           .some((message) => message.role === "user" && message.text.includes(prompt)),
       }),
     ]);
     for (const [boundary, result] of [["thread", visible], ["engine", native]] satisfies [string, PromiseSettledResult<unknown>][]) {
       evidence.recordAssertionEvidence(
-        `${engine} sessionless first prompt reaches the ${boundary}`,
+        `sessionless first prompt reaches the ${boundary}`,
         result.status === "fulfilled" ? `The ${boundary} retained the submitted prompt.` : String(result.reason),
         result.status === "fulfilled",
       );
@@ -569,7 +557,7 @@ test(`${engine}: Run task on the sessionless New task route creates the session 
     evidence.recordAssertionEvidence("The sent message stays on screen from submission until the created session takes over",
       `From the first visible user message (observation ${submissionIndex + firstShown}) to the first persisted surface (${takeoverIndex}), exactly one user message is shown and no persisted surface; the takeover is exactly the created session, which keeps that message.`, true);
     evidence.recordAssertionEvidence(
-      `${engine} creates exactly one session without replaying the first send`,
+      "the engine creates exactly one session without replaying the first send",
       "After the real engine reply, the session inventory is the original inventory plus exactly the routed session; one user row remains and the composer is empty.",
       true,
     );

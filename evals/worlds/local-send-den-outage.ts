@@ -6,7 +6,7 @@ import { sessionlessFirstSendWorld } from "./first-run.ts";
 import { eventually } from "@openwork/testkit";
 
 export async function localSendDenOutageWorld(seed: Seed) {
-  const base = await sessionlessFirstSendWorld(seed, { engine: "v1" });
+  const base = await sessionlessFirstSendWorld(seed);
   await using setup = new AsyncDisposableStack();
   let unavailable = false;
   const counts: { method: string; path: string; status: number; count: number }[] = [];
@@ -60,9 +60,11 @@ export async function localSendDenOutageWorld(seed: Seed) {
     until: (response) => response.status === 200 && typeof response.body === "object"
       && response.body !== null && "reloadPending" in response.body && response.body.reloadPending === false,
   });
-  const engineHealthPath = `/workspace/${encodeURIComponent(base.workspace.workspaceId)}/opencode/global/health`;
-  const engineHealth = await base.readNative(engineHealthPath);
-  if (engineHealth.status !== 200) throw new Error(`Configured engine health failed: ${engineHealth.status}`);
+  const engineHealth = await base.readNative("/engine/status");
+  if (engineHealth.status !== 200 || typeof engineHealth.body !== "object" || engineHealth.body === null
+    || !("running" in engineHealth.body) || engineHealth.body.running !== true) {
+    throw new Error(`Configured engine is not running: ${engineHealth.status}`);
+  }
   unavailable = true;
   const owned = setup.move();
   return {

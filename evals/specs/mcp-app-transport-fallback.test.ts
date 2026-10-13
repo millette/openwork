@@ -3,7 +3,7 @@ import { createServer, type ServerResponse } from "node:http";
 import { join } from "node:path";
 import { expect } from "vitest";
 import { spec } from "@openwork/testkit";
-import { bootServer, close, isRecord, listen, readBody, sendJson, stopChild } from "../worlds/openwork-server-cli.ts";
+import { bootServer, close, engineBinaryEnv, isRecord, listen, readBody, sendJson, stopChild } from "../worlds/openwork-server-cli.ts";
 
 // New interoperability journey: a configured MCP App remains discoverable on
 // modern and legacy providers, while failed negotiation retains safe diagnostics.
@@ -61,7 +61,7 @@ const test = spec.world(async (seed) => {
   const inherited = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("OPENWORK_") && !key.startsWith("OPENCODE")));
   const booted = bootServer({ ...inherited, HOME: home, XDG_CONFIG_HOME: join(home, ".config"),
     XDG_DATA_HOME: join(home, ".local/share"), XDG_CACHE_HOME: join(home, ".cache"),
-    XDG_STATE_HOME: join(home, ".local/state"), OPENWORK_MANAGE_OPENCODE: "0", OPENWORK_ALLOW_PRIVATE_MCP_URLS: "1",
+    XDG_STATE_HOME: join(home, ".local/state"), ...engineBinaryEnv(), OPENWORK_ALLOW_PRIVATE_MCP_URLS: "1",
   }, token, workspace, () => {});
   const dispose = async () => {
     await stopChild(booted.child);
