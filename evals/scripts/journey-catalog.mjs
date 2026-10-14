@@ -68,6 +68,9 @@ const definitions = {
   // packaged-upgrade-path job (ci-tests.yml) provides both: this commit's enterprise package and the latest
   // public release as the baseline; release validation runs it against the release itself (#4848).
   'released-enterprise-activated.e2e.test.ts': { name: 'Open and update an activated enterprise install against its Den', placement: 'local', needs: PACKAGED_BINARY },
+  // The Computer button renders only in the macOS desktop app, and its readiness is the bundled
+  // helper's probe of this Mac's Accessibility and Screen Recording permissions; Linux lanes cannot run it.
+  'computer-use-chat-consent.e2e.test.ts': { name: 'Allow and stop computer use for one chat', placement: 'local', needs: { platform: 'darwin' } },
   'cross-server-handoff-atomic-commit.e2e.test.ts': { name: 'Switch servers and recover enrollment', critical: true, placement: 'local' },
   // Flips sso_connection directly in the testkit database; Daytona Den exposes no database.
   'scim-okta-lifecycle.e2e.test.ts': { name: 'Provision members from an Okta-shaped SCIM client', placement: 'local' },
