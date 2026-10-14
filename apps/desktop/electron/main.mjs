@@ -31,6 +31,7 @@ import { applyBrandAppName } from "./brand-app-name.mjs";
 import { createBrowserPanel } from "./browser-panel.mjs";
 import { createComputerControl } from "./computer-control.mjs";
 import { createLocalComputerAdapter } from "./computer-local.mjs";
+import { remoteComputerAdapters } from "./computer-targets.mjs";
 import { resetPermissionEntry, resolvePermissionEntry } from "./computer-permission-entry.mjs";
 import { createWorkspaceStore } from "./workspace-store.mjs";
 import {
@@ -180,7 +181,8 @@ let computerPermissionEntry = null;
 const readComputerPermissionEntry = () => (computerPermissionEntry ??= resolvePermissionEntry({ fallbackName: APP_NAME })
   .catch(() => ({ name: APP_NAME, bundleId: null, ours: false })));
 const computerControl = createComputerControl({
-  adapter: createLocalComputerAdapter({
+  // This computer first, then any configured VM (see computer-targets.mjs).
+  adapters: [createLocalComputerAdapter({
     resourcesPath: process.resourcesPath,
     appRoot: path.resolve(__dirname, ".."),
     permissionEntry: async () => (await readComputerPermissionEntry()).name,
@@ -191,13 +193,17 @@ const computerControl = createComputerControl({
       window.focus();
       app.focus({ steal: true });
     },
-  }),
+  }), ...remoteComputerAdapters()],
   standing: {
     read: async () => {
       try {
         const saved = JSON.parse(await readFile(computerAllowsPath(), "utf8"));
-        return { always: saved?.always === true, chats: Array.isArray(saved?.chats) ? saved.chats.filter((id) => typeof id === "string") : [] };
-      } catch { return { always: false, chats: [] }; }
+        return {
+          always: saved?.always === true,
+          chats: Array.isArray(saved?.chats) ? saved.chats.filter((id) => typeof id === "string") : [],
+          targets: saved?.targets && typeof saved.targets === "object" ? saved.targets : {},
+        };
+      } catch { return { always: false, chats: [], targets: {} }; }
     },
     write: async (state) => {
       const target = computerAllowsPath();
@@ -1957,6 +1963,10 @@ const desktopCommandHandlers = {
   "computerDismissSetup": async (event, setupId) => {
       assertComputerSender(event);
       await computerControl.dismissSetup({ setupId });
+  },
+  "computerChoose": async (event, input) => {
+      assertComputerSender(event);
+      return computerControl.choose({ sessionId: String(input?.sessionId ?? ""), targetId: String(input?.targetId ?? "") });
   },
   "computerHalt": async (event, sessionId) => {
       assertComputerSender(event);

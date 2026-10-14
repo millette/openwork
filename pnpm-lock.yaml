@@ -354,6 +354,15 @@ importers:
       '@openwork/remote-sessions':
         specifier: workspace:*
         version: link:../../packages/remote-sessions
+      '@openwork/sandbox':
+        specifier: workspace:*
+        version: link:../../packages/sandbox
+      '@openwork/sandbox-daytona':
+        specifier: workspace:*
+        version: link:../../packages/sandbox-daytona
+      '@openwork/sandbox-freestyle':
+        specifier: workspace:*
+        version: link:../../packages/sandbox-freestyle
       '@openwork/types':
         specifier: workspace:*
         version: link:../../packages/types

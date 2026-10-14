@@ -22,6 +22,8 @@ export function ComputerRequestPanel({ sessionId, request }: { sessionId: string
   const [busy, setBusy] = useState<"allow" | "always" | "dismiss" | null>(null)
   const [error, setError] = useState("")
   const setup = request.reason === "setup"
+  const remote = request.placement === "remote"
+  const where = remote ? ` on ${request.computer}` : ""
 
   async function answer(next: "allow" | "always" | "dismiss") {
     if (busy) return
@@ -44,11 +46,15 @@ export function ComputerRequestPanel({ sessionId, request }: { sessionId: string
             <Monitor size={16} strokeWidth={1.9} />
           </div>
           <div className="min-w-0">
-            <div className="text-[13px] font-medium leading-5 text-dls-text">The agent wants to use {appLabel(request.appId)}</div>
+            <div className="text-[13px] font-medium leading-5 text-dls-text">The agent wants to use {request.appId === "desktop" ? "the desktop" : appLabel(request.appId)}{where}</div>
             <div className="mt-0.5 text-[12px] leading-5 text-dls-secondary">
-              {setup
-                ? "Computer use needs two macOS permissions first. It takes about a minute, and the agent carries on when you're done."
-                : "Allow computer use in this chat? You'll see the agent's cursor on screen and can take over or stop anytime."}
+              {setup && remote
+                ? `${request.computer} isn't ready yet. ${request.detail ?? ""} The agent carries on once it is.`
+                : setup
+                  ? "Computer use needs two macOS permissions first. It takes about a minute, and the agent carries on when you're done."
+                  : remote
+                    ? `Allow computer use on ${request.computer} in this chat? You can watch it, take over or stop anytime.`
+                    : "Allow computer use in this chat? You'll see the agent's cursor on screen and can take over or stop anytime."}
             </div>
             {request.purpose ? <div className="mt-1 line-clamp-2 text-[12px] leading-5 text-dls-secondary">{request.purpose}</div> : null}
             {error ? <div role="alert" className="mt-1 text-[12px] leading-5 text-red-11">{error}</div> : null}
@@ -58,7 +64,7 @@ export function ComputerRequestPanel({ sessionId, request }: { sessionId: string
           <Button type="button" variant="ghost" size="sm" disabled={busy !== null} aria-busy={busy === "dismiss"} data-testid="session-computer-request-dismiss" onClick={() => void answer("dismiss")}>
             Not now
           </Button>
-          {setup ? (
+          {setup && remote ? null : setup ? (
             <Button type="button" size="sm" data-testid="session-computer-request-setup" onClick={() => openSetup(sessionId)}>
               Set up
             </Button>

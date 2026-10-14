@@ -48,7 +48,7 @@ function computerTool<T extends z.ZodTypeAny>(name: string, description: string,
     if (!native.success) {
       const unavailable = z.object({ code: z.literal("browser_unavailable") }).safeParse(result);
       return JSON.stringify(unavailable.success
-        ? { ok: false, code: "computer_unavailable", message: "Computer use is unavailable. Open the OpenWork desktop app on the same Mac as this task's server." }
+        ? { ok: false, code: "computer_unavailable", message: "Computer use is unavailable. Open the OpenWork desktop app on the same machine as this task's server." }
         : result);
     }
     // The engine's native tool result retains image attachments alongside text.
@@ -68,9 +68,13 @@ const actSchema = z.union([
   z.object({ observation_id: string, actions: z.array(action).min(1).max(8), intent }).strict(),
 ]);
 
-/** macOS only: the native helper exists nowhere else. */
-export const server = async () => ({ tool: platform() !== "darwin" ? {} : {
-  computer_discover: computerTool("computer_discover", "List running Mac app identities, permissions, modes, keys and limits. Does not grant access.", z.object({}).strict(), {}),
+// Offered where a computer can exist: this Mac's helper, or a VM configured
+// for the desktop (see apps/desktop/electron/computer-targets.mjs).
+const hasComputer = () => platform() === "darwin"
+  || Boolean(process.env.OPENWORK_COMPUTER_FREESTYLE_VM?.trim() || process.env.OPENWORK_COMPUTER_DAYTONA_SANDBOX?.trim());
+
+export const server = async () => ({ tool: !hasComputer() ? {} : {
+  computer_discover: computerTool("computer_discover", "List the app identities on this chat's computer (this Mac or a connected VM), with its platform, permissions, modes, keys and limits. Does not grant access.", z.object({}).strict(), {}),
   computer_open: computerTool("computer_open", "Request native approval for one exact app, one person-selected window, and a mode for up to 15 minutes. Observe reads; assist uses accessible controls and keeps working while the person uses their computer; control uses visual input, takes the foreground and pauses when they use it, so prefer assist when it can do the job. Never retry a denied request without the person asking. Before opening, name the finished result the person should see; that is your done condition for the act loop." + safety, z.object(open).strict(), open),
   computer_observe: computerTool("computer_observe", "See the approved window: returns its screenshot (default), interactive accessible elements (ref, role, label, value, x/y/w/h in image pixels, press/settable/disabled flags) and an observation_id valid for one act within 60 seconds. Every act already returns a fresh settled observation, so call this only at the start, after a person handoff, or when told to. elements=all adds static text for reading; none returns only the image. If no screenshot reaches you (some models read text only) and the elements are not enough, the session is fine: tell the person your current model cannot see the screen and to choose one that can see images.", z.object(observe).strict(), observe),
   computer_act: computerTool("computer_act", "Act on the approved window, then read the fresh observation returned with the receipt. Pass one action, or actions (up to 8) for a predictable sequence in one round trip: click a field, type, key enter; set_value several refs then press Save; key command+f, type, key enter. Steps run in order and each is validated live; the batch stops at the first failure and the receipt names the completed, failed and skipped steps. Prefer press/set_value on refs for forms; use key with modifiers for app shortcuts instead of hunting for buttons; quit, close, hide and app-switch chords are refused; command+v works only after this session used command+c or command+x. Use move to hover, click/double_click/triple_click (optionally with modifiers) to choose, drag to select or move, scroll (positive delta_y up, positive delta_x left); these need control mode and a screenshot. Use wait (ms) inside a batch for a load, not between round trips. Coordinates are image pixels, never screen coordinates. A dispatched receipt is not proof of completion; verify in the returned observation and never replay an uncertain dispatch. Loop until done: act, read the returned observation, decide the next step, and repeat until it shows the done condition you named. When a step fails or the view is unexpected, change route rather than repeating: a ref instead of coordinates, a shortcut, scroll, search, or a menu. Zoom instead of guessing at small text. Ask rather than guess when the request lacks something you need; otherwise ask only when consent, a sensitive action or a takeover blocks you. Before finishing, check every part of the request against the final observation, then state what it shows, or exactly what blocked you and what you tried.", actSchema, act),

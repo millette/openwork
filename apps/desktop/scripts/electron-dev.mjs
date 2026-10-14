@@ -230,6 +230,8 @@ if (process.env.OPENWORK_ELECTRON_SKIP_WORKSPACE_BUILD !== "1") {
   console.log("[electron-dev] Building Electron workspace dependencies...");
   runSync(pnpmCmd, ["--filter", "@openwork/headless-threads", "build"], { cwd: repoRoot });
   runSync(pnpmCmd, ["--filter", "@openwork/remote-sessions", "build"], { cwd: repoRoot });
+  // Remote computers for computer use load these lazily from their builds.
+  runSync(pnpmCmd, ["--filter", "@openwork/sandbox", "--filter", "@openwork/sandbox-freestyle", "--filter", "@openwork/sandbox-daytona", "build"], { cwd: repoRoot });
   runSync(pnpmCmd, ["--filter", "openwork-server", "build"], { cwd: repoRoot });
 }
 

@@ -13,7 +13,7 @@ import { ComputerPanel } from "./computer-panel"
 import { ComputerSetup } from "./computer-setup"
 import { useComputerRequest, useComputerStore } from "./computer-store"
 
-export type ComputerBusy = "allow" | "always" | "stop" | "halt" | "reset" | ComputerPermission | null
+export type ComputerBusy = "allow" | "always" | "stop" | "halt" | "reset" | "choose" | ComputerPermission | null
 
 const NATIVE_PHASE_LABELS: Record<string, string> = {
   person_interacting: "You have control",
@@ -88,7 +88,7 @@ export function ComputerControl({ sessionId }: { sessionId: string }) {
     return () => { window.clearInterval(timer); window.removeEventListener("focus", onFocus) }
   }, [observing, open, setupOpen, request])
 
-  async function act(action: Exclude<ComputerBusy, null | "reset">) {
+  async function act(action: Exclude<ComputerBusy, null | "reset" | "choose">) {
     if (changing.current || !snapshot) return
     const permission = action === "accessibility" || action === "screenRecording" ? action : null
     if (permission && (readError || !snapshot.permissions)) return
@@ -147,9 +147,27 @@ export function ComputerControl({ sessionId }: { sessionId: string }) {
     }
   }
 
+  async function choose(targetId: string) {
+    if (changing.current || !snapshot || targetId === snapshot.targetId) return
+    changing.current = true
+    const version = ++requestVersion.current
+    setBusy("choose")
+    setActionError("")
+    try {
+      const next = await desktopBridge.computerChoose({ sessionId, targetId })
+      if (version === requestVersion.current) setSnapshot(next)
+    } catch (cause) {
+      if (version === requestVersion.current) setActionError(`Switching computers didn't finish. ${message(cause)}`)
+    } finally {
+      if (version === requestVersion.current) { changing.current = false; setBusy(null) }
+    }
+  }
+
   const session = snapshot?.session ?? null
   const allowed = Boolean(snapshot?.allowed)
   const ready = snapshot?.readiness === "ready"
+  const remote = snapshot?.placement === "remote"
+  const computer = snapshot?.targets.find((target) => target.id === snapshot.targetId)?.label ?? "This Mac"
   const status = snapshot
     ? snapshot.cleanupPending ? "Stopping" : allowed ? snapshot.alwaysAllowed ? "Always allowed" : "Allowed for this chat" : "Off for this chat"
     : readError ? "Unavailable" : "Checking..."
@@ -162,6 +180,9 @@ export function ComputerControl({ sessionId }: { sessionId: string }) {
     : session?.phase ? phaseLabel(session.phase)
     : "Access allowed"
   const expires = session?.expiresAt ? new Date(session.expiresAt) : null
+
+  // Nothing to offer: this computer can't run computer use and no VM is connected.
+  if (snapshot && snapshot.targets.length === 1 && snapshot.readiness === "unsupported") return null
 
   return (
     <>
@@ -206,21 +227,36 @@ export function ComputerControl({ sessionId }: { sessionId: string }) {
               />
             }
           />
-          <TooltipContent>{`Computer · ${request ? "Waiting for you" : needsAttention ? "Check status" : [status, session ? phase : readiness].filter(Boolean).join(" · ")}`}</TooltipContent>
+          <TooltipContent>{`${computer} · ${request ? "Waiting for you" : needsAttention ? "Check status" : [status, session ? phase : readiness].filter(Boolean).join(" · ")}`}</TooltipContent>
         </Tooltip>
         <PopoverContent align="end" className="w-[min(360px,calc(100vw-32px))] gap-3 text-xs leading-relaxed text-muted-foreground" data-testid="session-computer-popover">
           <h2 className="text-sm font-semibold text-foreground">Computer use</h2>
-          <p>Let the agent use Mac apps for tasks you ask for in this chat. It sees only the window it is given, and that content goes to your AI model provider.</p>
+          <p>Let the agent use apps on a computer for tasks you ask for in this chat: this Mac or a connected VM. It sees only the window it is given, and that content goes to your AI model provider.</p>
+          {snapshot && snapshot.targets.length > 1 ? (
+            <label className="flex items-center justify-between gap-3">
+              <span className="text-foreground">Computer</span>
+              <select
+                className="min-w-0 max-w-[60%] rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                value={snapshot.targetId}
+                disabled={busy !== null}
+                aria-busy={busy === "choose"}
+                data-testid="session-computer-target"
+                onChange={(event) => void choose(event.target.value)}
+              >
+                {snapshot.targets.map((target) => <option key={target.id} value={target.id}>{target.label}</option>)}
+              </select>
+            </label>
+          ) : null}
           <div className="flex items-start gap-3 rounded-2xl border border-border bg-muted/30 p-3">
             <span aria-hidden className={cn("mt-1.5 size-2.5 shrink-0 rounded-full", needsAttention ? "bg-amber-9" : allowed ? "bg-green-9" : "bg-gray-7")} />
             <div className="min-w-0 flex-1 space-y-0.5">
               <p className="text-sm font-medium text-foreground" role="status" data-testid="session-computer-status">{readError && snapshot ? `Last known: ${status}` : status}</p>
-              {snapshot ? <p data-testid="session-computer-readiness" data-state={snapshot.readiness}>{["This Mac", readiness].join(" · ")}</p> : null}
+              {snapshot ? <p data-testid="session-computer-readiness" data-state={snapshot.readiness}>{[computer, readiness].join(" · ")}</p> : null}
             </div>
           </div>
           {readError ? <p role="alert" className="text-red-11" data-testid="session-computer-read-error">{snapshot ? "Updates unavailable. Last known state is shown; a connection failure does not confirm a stop. " : "Computer use is unavailable. "}{readError}</p> : null}
           {actionError ? <p role="alert" className="text-red-11" data-testid="session-computer-action-error">{actionError}</p> : null}
-          {snapshot && !ready ? <p>{snapshot.readiness === "setup-required" ? `macOS needs two permissions for ${snapshot.entry.name} first.` : snapshot.detail}</p> : null}
+          {snapshot && !ready ? <p>{snapshot.readiness === "setup-required" && !remote ? `macOS needs two permissions for ${snapshot.entry.name} first.` : snapshot.detail}</p> : null}
           {snapshot?.busyElsewhere && !working ? <p className="text-amber-11">Another chat is using this Mac right now. This chat can use it once that one finishes or is stopped.</p> : null}
           {snapshot ? (
             <label className="flex items-start gap-3">
@@ -242,15 +278,17 @@ export function ComputerControl({ sessionId }: { sessionId: string }) {
           <div className="flex flex-wrap gap-2">
             {snapshot && !allowed ? <Button size="sm" disabled={busy !== null || Boolean(readError)} aria-busy={busy === "allow"} data-testid="session-computer-allow" onClick={() => void act("allow")}>Allow for this chat</Button> : null}
             {snapshot && (allowed || working) ? <Button size="sm" variant="destructive" disabled={busy !== null} aria-busy={busy === "stop"} data-testid="session-computer-stop" onClick={() => void act("stop")}>Stop &amp; revoke</Button> : null}
-            <Button
-              size="sm"
-              variant={snapshot?.readiness === "setup-required" ? "default" : "outline"}
-              disabled={busy !== null || !snapshot || snapshot.readiness === "unsupported"}
-              data-testid="session-computer-setup"
-              onClick={() => { setOpen(false); openSetup(sessionId) }}
-            >
-              {snapshot?.readiness === "setup-required" ? "Set up" : "Permissions"}
-            </Button>
+            {remote ? null : (
+              <Button
+                size="sm"
+                variant={snapshot?.readiness === "setup-required" ? "default" : "outline"}
+                disabled={busy !== null || !snapshot || snapshot.readiness === "unsupported"}
+                data-testid="session-computer-setup"
+                onClick={() => { setOpen(false); openSetup(sessionId) }}
+              >
+                {snapshot?.readiness === "setup-required" ? "Set up" : "Permissions"}
+              </Button>
+            )}
           </div>
           {session ? (
             <section className="space-y-2 rounded-2xl border border-border bg-muted/30 p-3" aria-label="Computer session" data-testid="session-computer-session">

@@ -347,6 +347,11 @@ export type ComputerPermission = "accessibility" | "screenRecording";
 export type ComputerRequest = {
   id: string;
   reason: "setup" | "allow";
+  /** The computer the chat uses, e.g. "This Mac" or "Freestyle VM". */
+  computer: string;
+  placement: "local" | "remote";
+  /** What a remote computer still needs; macOS setup uses the checklist instead. */
+  detail?: string;
   appId?: string;
   purpose?: string;
 };
@@ -362,6 +367,10 @@ export type ComputerSnapshot = {
   /** The app macOS lists in System Settings for these permissions; `ours` when OpenWork can reset it. */
   entry: { name: string; ours: boolean };
   request: ComputerRequest | null;
+  /** The computer this chat uses, and every computer it could use (this Mac, connected VMs). */
+  targetId: string;
+  targets: { id: string; label: string; placement: "local" | "remote" }[];
+  placement: "local" | "remote";
   readiness: "ready" | "setup-required" | "unsupported" | "unavailable";
   permissions?: { accessibility: boolean; screenRecording: boolean };
   detail: string;
@@ -454,6 +463,7 @@ export type DesktopCommandMap = {
   computerAlwaysAllow: { args: [input: { sessionId: string; allowed: boolean }]; result: ComputerSnapshot };
   computerSetup: { args: [permission: ComputerPermission]; result: { setupId: string } };
   computerDismissSetup: { args: [setupId?: string]; result: void };
+  computerChoose: { args: [input: { sessionId: string; targetId: string }]; result: ComputerSnapshot };
   computerHalt: { args: [sessionId: string]; result: ComputerSnapshot };
   computerAnswerRequest: { args: [input: { sessionId: string; answer: "allow" | "always" | "dismiss" }]; result: ComputerSnapshot };
   computerSetFeatureEnabled: { args: [enabled: boolean]; result: boolean };

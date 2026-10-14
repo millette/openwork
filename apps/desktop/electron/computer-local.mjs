@@ -342,8 +342,8 @@ export function createLocalComputerAdapter({
 
   return {
     id: "this-mac",
-    label: "This Mac",
-    placement: "desktop",
+    label: platform === "darwin" ? "This Mac" : "This computer",
+    placement: /** @type {"local"} */ ("local"),
     protocol: protocolVersion,
     async readiness() {
       const record = companion;
