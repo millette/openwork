@@ -236,6 +236,12 @@ Work on a local copy with shell tools; never paste file bytes or base64 into a t
 4. Only when the user asked to save to Drive: \`drive_push_file\`, which the person approves. A stored file is replaced in place: same link and sharing, with the previous version in Drive's version history for 30 days. A Google Docs, Sheets or Slides file is saved as a new Google file next to the original unless the user asked for something else.
 5. On \`drive_conflict\`, someone changed the file in Drive. Pull it again (\`overwrite: true\` replaces only your local copy) and reapply your edits, or save as a copy. Newer Drive changes are never overwritten.
 
+## With a shell but no OpenWork tools (Workbot computer, coding agents)
+
+1. Execute \`createGoogleDriveDownloadLink\` with the file ID. It returns a \`downloadUrl\` (also as an MCP resource link) that works for five minutes: save it with \`curl -fsSL -o <file> '<downloadUrl>'\` and check the size and md5. Never print or share the URL.
+2. Edit with bash as below.
+3. Only when asked to save: execute \`createGoogleDriveUploadSession\` with \`fileId\`, \`baseRevision\` (the link result's revision), \`name\`, \`size\` and \`mimeType\`, then upload with \`curl -fsS -X PUT -H 'Content-Type: <mimeType>' --data-binary @<file> '<uploadUrl>'\`. For a new file or a copy, omit \`fileId\`; \`convertTo\` keeps a copy as a Google file.
+
 ## Bash recipes
 
 - What is it: \`file <f>; ls -l <f>\`

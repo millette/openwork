@@ -20,6 +20,8 @@ import type {
   CreateCloudAutomationResponses,
   CreateGmailLabelErrors,
   CreateGmailLabelResponses,
+  CreateGoogleDriveDownloadLinkErrors,
+  CreateGoogleDriveDownloadLinkResponses,
   CreateGoogleDriveFolderErrors,
   CreateGoogleDriveFolderResponses,
   CreateGoogleDriveUploadSessionErrors,
@@ -129,6 +131,8 @@ import type {
   DenDesktopPolicyDocumentWrite,
   DescribeHostGoogleDriveDownloadErrors,
   DescribeHostGoogleDriveDownloadResponses,
+  DownloadGoogleDriveFileByLinkErrors,
+  DownloadGoogleDriveFileByLinkResponses,
   DownloadHostGoogleDriveFileErrors,
   DownloadHostGoogleDriveFileResponses,
   ExternalMcpConnectionAccessInput,
@@ -9125,6 +9129,68 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
+   * Create a five-minute download link for one Google Drive file, for clients with a shell
+   *
+   * For clients without OpenWork host file transport but with a shell, such as a Workbot computer or a coding agent. Download with curl into a file instead of reading the file into context; Docs, Sheets and Slides export to Office formats by default. To save edits back, prepare createGoogleDriveUploadSession with fileId and this revision as baseRevision. Uses the selected connection.
+   */
+  public createGoogleDriveDownloadLink<ThrowOnError extends boolean = false>(
+    parameters: {
+      fileId: string;
+      format?: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "fileId" },
+            { in: "body", key: "format" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      CreateGoogleDriveDownloadLinkResponses,
+      CreateGoogleDriveDownloadLinkErrors,
+      ThrowOnError
+    >({
+      url: "/v1/capabilities/google-workspace/drive-download-links",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Download one Google Drive file with a short-lived link
+   *
+   * The signed link names one member, connection, file and format and expires after five minutes. The member's current organization access and Google connection are checked again on every download.
+   */
+  public downloadGoogleDriveFileByLink<ThrowOnError extends boolean = false>(
+    parameters: {
+      token: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "token" }] }]);
+    return (options?.client ?? this.client).get<
+      DownloadGoogleDriveFileByLinkResponses,
+      DownloadGoogleDriveFileByLinkErrors,
+      ThrowOnError
+    >({
+      url: "/v1/direct-downloads/google-workspace/drive-link",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
    * Send an existing Gmail draft
    *
    * Sends the existing draft unchanged, including To/Cc/Bcc, reply threading and attachments. Create or inspect the draft first. Requires gmail.compose or gmail.modify (gmail.send alone does not authorize drafts.send). A successful response contains the actual sent message id and threadId, not the old draft message ID. Uses only the calling member's selected connected Google account. Perform writes only when explicitly requested by the user; capability discovery or selection is not authorization. Never automatically retry an uncertain write.
@@ -10292,7 +10358,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Read a Google Drive file's text or binary content as the calling member
    *
-   * Reads a Drive file. Docs and Slides export as plain text; Sheets exports the first tab as CSV. For every spreadsheet tab or edits use the spreadsheet metadata and values capabilities. Downloaded content is bounded; binary files use standard base64 within the model-safety limit. To analyze or edit a whole file (Office, PDF, large CSV), pull it into the workspace with the drive_pull_file tool instead.
+   * Reads a Drive file. Docs and Slides export as plain text; Sheets exports the first tab as CSV. For every spreadsheet tab or edits use the spreadsheet metadata and values capabilities. Downloaded content is bounded; binary files use standard base64 within the model-safety limit. To analyze or edit a whole file (Office, PDF, large CSV), pull it into the workspace with the drive_pull_file tool instead, or with createGoogleDriveDownloadLink from a shell.
    */
   public getV1CapabilitiesGoogleWorkspaceDriveFileByFileId<ThrowOnError extends boolean = false>(
     parameters: {

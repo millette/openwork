@@ -6,7 +6,7 @@ const SHEET = "application/vnd.google-apps.spreadsheet";
 const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 // Browser-less: the real desktop host and Cloud gateway move file bytes; the agent's tool calls are made directly.
-const test = spec.world(driveFiles, { resources: { surfaces: [], services: ["den"] }, needs: { commands: ["bun", "pnpm"], placement: "local" }, timeout: 600_000 });
+const test = spec.world(driveFiles, { resources: { surfaces: [], services: ["den"] }, needs: { commands: ["bun", "pnpm", "curl"], placement: "local" }, timeout: 600_000 });
 test("an agent pulls a Drive file into the workspace, edits it with bash and saves it back without the file entering its context", async ({ world, step, evidence }) => {
   const supplierPath = "drive/Supplier entry.xlsx";
   const capability = (operation: string) => `native:${world.fullId}:${operation}`;
@@ -107,7 +107,7 @@ test("an agent pulls a Drive file into the workspace, edits it with bash and sav
     evidence.recordAssertionEvidence("Google Sheets round-trip as a new Google Sheet", "Pulling a Drive shortcut fetched the Sheet it points to, as xlsx with the exact export bytes, next to an unrelated file that already had the default name (left untouched). Re-pulling after a local edit was refused instead of discarding it. Replacing the Sheet from an upload was refused; the default push converted the edited workbook into a new Google Sheet in the same folder and left the original at version 1.", true);
   });
 
-  await step("after: another member, a read-only connection and paths or symlinks outside the workspace are refused", async () => {
+  await step("another member, a read-only connection and paths or symlinks outside the workspace are refused", async () => {
     const other = await world.describeAs("second", world.files.supplier);
     expect(other.status).toBe(502);
     expect(String(other.body.message)).toContain("may not have access");
@@ -129,5 +129,41 @@ test("an agent pulls a Drive file into the workspace, edits it with bash and sav
     expect(linked.body).toMatchObject({ code: "path_outside_workspace" });
     expect((await world.bash("ls -A ../outside | wc -l")).stdout.trim()).toBe("0");
     evidence.recordAssertionEvidence("Pulls and pushes stay inside the member's own access", "Another member's Google account got Google's no-access reason. A read-only connection could pull but its push returned needs_connection with the Drive file unchanged. A path outside the workspace and a folder symlinked outside it were both refused, and nothing was written there.", true);
+  });
+
+  await step("after: a shell-only client downloads with a five-minute link and saves edits back with curl", async () => {
+    const search = await world.mcp("search_capabilities", { query: "Drive Full download link file", limit: 20 });
+    expect(world.objects(search).some((entry) => entry.name === capability("createGoogleDriveDownloadLink"))).toBe(true);
+    const created = await world.mcp("execute_capability", { name: capability("createGoogleDriveDownloadLink"), body: { fileId: world.files.supplier } });
+    expect(created.isError).toBe(false);
+    const link = world.objects(created).find((entry) => entry.ok === true && typeof entry.downloadUrl === "string");
+    if (!link || typeof link.downloadUrl !== "string") throw new Error("No download link returned");
+    const expiresIn = Date.parse(String(link.expiresAt)) - Date.now();
+    expect(expiresIn).toBeGreaterThan(0);
+    expect(expiresIn).toBeLessThanOrEqual(5 * 60 * 1000);
+    // The standard MCP pointer for clients such as Claude Code and Codex.
+    expect(world.objects(created).find((entry) => entry.type === "resource_link")).toEqual({ type: "resource_link", uri: link.downloadUrl, name: "Supplier entry.xlsx", mimeType: XLSX, size: expect.any(Number) });
+    const revision = String((link.file as Record<string, unknown>).revision);
+    const current = await driveFile(world.files.supplier);
+    expect(revision).toBe(current.revision);
+    const download = await world.bash(`mkdir -p shell && curl -fsSL -o shell/Supplier.xlsx '${link.downloadUrl}'`);
+    expect(download.code, download.stderr).toBe(0);
+    expect((await world.read("shell/Supplier.xlsx")).equals(current.bytes)).toBe(true);
+    expect((await world.bash(`curl -s -o /dev/null -w '%{http_code}' '${link.downloadUrl}x'`)).stdout).toBe("404");
+    expect((await world.bash("printf ' shell edit' >> shell/Supplier.xlsx")).code).toBe(0);
+    const local = await world.read("shell/Supplier.xlsx");
+    const sessionBody = { name: "Supplier entry.xlsx", size: local.byteLength, mimeType: XLSX, fileId: world.files.supplier };
+    const stale = await world.mcp("execute_capability", { name: capability("createGoogleDriveUploadSession"), body: { ...sessionBody, baseRevision: "rev-1" } });
+    expect(world.objects(stale).some((entry) => entry.error === "drive_conflict")).toBe(true);
+    const prepared = await world.mcp("execute_capability", { name: capability("createGoogleDriveUploadSession"), body: { ...sessionBody, baseRevision: revision } });
+    const session = world.objects(prepared).find((entry) => typeof entry.uploadUrl === "string");
+    if (!session || typeof session.uploadUrl !== "string") throw new Error("No upload session returned");
+    expect(session.replaces).toEqual({ fileId: world.files.supplier, previousRevision: revision });
+    const upload = await world.bash(`curl -fsS -o /dev/null -X PUT -H 'Content-Type: ${XLSX}' --data-binary @shell/Supplier.xlsx '${session.uploadUrl}'`);
+    expect(upload.code, upload.stderr).toBe(0);
+    const replaced = await driveFile(world.files.supplier);
+    expect(replaced.bytes.equals(local)).toBe(true);
+    expect(replaced.revision).not.toBe(revision);
+    evidence.recordAssertionEvidence("Shell clients use the same pull, edit and push path", "createGoogleDriveDownloadLink returned the current revision and a five-minute downloadUrl, also as a standard MCP resource_link, that curl saved byte for byte; a tampered link returned 404. A session with a stale baseRevision returned drive_conflict; with the current one, a single curl PUT replaced the same file with the edited bytes. No link or session URL appears in evidence.", true);
   });
 });
