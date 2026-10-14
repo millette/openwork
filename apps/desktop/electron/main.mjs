@@ -29,6 +29,8 @@ import { createApplicationMenu } from "./app-menu.mjs";
 import { createNativeContextMenus } from "./context-menu.mjs";
 import { applyBrandAppName } from "./brand-app-name.mjs";
 import { createBrowserPanel } from "./browser-panel.mjs";
+import { createComputerControl } from "./computer-control.mjs";
+import { createLocalComputerAdapter } from "./computer-local.mjs";
 import { createWorkspaceStore } from "./workspace-store.mjs";
 import {
   buildNukeManifest,
@@ -168,12 +170,48 @@ const applicationMenu = createApplicationMenu({
 
 let browserPanel = null;
 
+// "Always allow" is the person's own choice, kept in app data outside every
+// workspace so an agent can never grant itself computer access.
+const computerAlwaysAllowPath = () => path.join(app.getPath("userData"), "computer-always-allow.json");
+const computerControl = createComputerControl({
+  adapter: createLocalComputerAdapter({
+    resourcesPath: process.resourcesPath,
+    appRoot: path.resolve(__dirname, ".."),
+    onSetupReturn: async () => {
+      const window = await createMainWindow();
+      if (window.isMinimized()) window.restore();
+      window.show();
+      window.focus();
+      app.focus({ steal: true });
+    },
+  }),
+  standing: {
+    allowed: async () => {
+      try { return JSON.parse(await readFile(computerAlwaysAllowPath(), "utf8"))?.allowed === true; }
+      catch { return false; }
+    },
+    set: async (allowed) => {
+      const target = computerAlwaysAllowPath();
+      const temporary = `${target}.${process.pid}.tmp`;
+      await writeFile(temporary, JSON.stringify({ allowed }), "utf8");
+      await rename(temporary, target);
+    },
+  },
+});
+/** Computer use changes app consent; only the main OpenWork window may ask. */
+function assertComputerSender(event) {
+  if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) {
+    throw new Error("Computer use controls require the main OpenWork window.");
+  }
+}
+
 const uiControlServer = createUiControlServer({
   app,
   appName: APP_NAME,
   appIdentifier: APP_IDENTIFIER,
   getWindow: () => createMainWindow(),
   browserTask: (args, options) => browserPanel?.browserTask(args, options) ?? { ok: false, code: "browser_unavailable" },
+  computerTask: (args, options) => computerControl.execute(args, options),
   listWebMcpTools: (args, options) => browserPanel?.listWebMcpTools(args, options) ?? {
     ok: false,
     error: "The built-in browser is not ready.",
@@ -1429,6 +1467,7 @@ const quitSequencer = createQuitSequencer({
     await Promise.all([
       disposeRuntimeBeforeQuit(),
       uiControlServer.stop(),
+      computerControl.reset(true),
     ]);
   },
   quit: () => {
@@ -1864,6 +1903,47 @@ const desktopCommandHandlers = {
       return {
         OPENWORK_UI_CONTROL_DISCOVERY: path.join(app.getPath("userData"), "openwork-ui-control.json"),
       };
+  },
+  "computerSnapshot": async (event, sessionId) => {
+      assertComputerSender(event);
+      return computerControl.snapshot({ sessionId: String(sessionId ?? "") });
+  },
+  "computerPresentation": async (event, sessionId, visible) => {
+      assertComputerSender(event);
+      return computerControl.presentation({ sessionId: String(sessionId ?? ""), visible: visible === true });
+  },
+  "computerInteract": async (event, input) => {
+      assertComputerSender(event);
+      return computerControl.interact({
+        sessionId: String(input?.sessionId ?? ""),
+        id: String(input?.id ?? ""),
+        action: input?.action,
+        ...(input?.windowId !== undefined ? { windowId: input.windowId } : {}),
+      });
+  },
+  "computerConfigure": async (event, input) => {
+      assertComputerSender(event);
+      return computerControl.configure({ sessionId: String(input?.sessionId ?? ""), expectedRevision: input?.expectedRevision, enabled: input?.enabled });
+  },
+  "computerStop": async (event, input) => {
+      assertComputerSender(event);
+      return computerControl.stop({ sessionId: String(input?.sessionId ?? ""), expectedRevision: input?.expectedRevision });
+  },
+  "computerAlwaysAllow": async (event, input) => {
+      assertComputerSender(event);
+      return computerControl.alwaysAllow({ sessionId: String(input?.sessionId ?? ""), allowed: input?.allowed });
+  },
+  "computerSetup": async (event, permission) => {
+      assertComputerSender(event);
+      return computerControl.setup({ permission });
+  },
+  "computerDismissSetup": async (event, setupId) => {
+      assertComputerSender(event);
+      await computerControl.dismissSetup({ setupId });
+  },
+  "computerEndTurn": async (event, sessionId) => {
+      assertComputerSender(event);
+      return computerControl.endTurn({ sessionId: String(sessionId ?? "") });
   },
   "getDesktopBootstrapConfig": async (event, ...args) => {
       return workspaceStore.getDesktopBootstrapConfig();

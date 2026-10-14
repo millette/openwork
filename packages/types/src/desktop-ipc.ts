@@ -341,6 +341,44 @@ export type UiControlBridgeInfo = {
   token?: string;
 };
 
+export type ComputerPermission = "accessibility" | "screenRecording";
+
+/** One chat's computer use state, as the broker reports it. */
+export type ComputerSnapshot = {
+  revision: number;
+  enabled: boolean;
+  alwaysAllowed: boolean;
+  readiness: "ready" | "setup-required" | "unsupported" | "unavailable";
+  permissions?: { accessibility: boolean; screenRecording: boolean };
+  detail: string;
+  busyElsewhere: boolean;
+  session: {
+    state: string;
+    purpose: string;
+    appName?: string;
+    windowTitle?: string;
+    phase?: string;
+    expiresAt?: string;
+    reason?: string;
+  } | null;
+  cleanupPending?: boolean;
+};
+
+/** The live watch view: recent redacted frames and dispatched input, never actionable. */
+export type ComputerPresentation = {
+  id: string;
+  phase: "approval" | "working" | "paused" | "closed";
+  appName?: string;
+  windowTitle?: string;
+  task?: string;
+  mode?: string;
+  status?: string;
+  canContinue?: boolean;
+  windows?: { id: number; title: string }[];
+  frame?: { sequence: number; capturedAt: number; width: number; height: number; mimeType: "image/png"; data: string };
+  inputs: { sequence: number; at: number; action: string; phase: string; x?: number; y?: number }[];
+};
+
 // ---------------------------------------------------------------------------
 // The command map
 // ---------------------------------------------------------------------------
@@ -389,6 +427,20 @@ export type DesktopCommandMap = {
   getUiControlBridgeInfo: { args: []; result: UiControlBridgeInfo | null };
   getOpenworkUiMcpCommand: { args: []; result: string[] };
   getOpenworkUiMcpEnvironment: { args: []; result: Record<string, string> };
+
+  // Computer use (macOS): per-chat consent, the watch view and permission setup
+  computerSnapshot: { args: [sessionId: string]; result: ComputerSnapshot };
+  computerPresentation: { args: [sessionId: string, visible: boolean]; result: ComputerPresentation | null };
+  computerInteract: {
+    args: [input: { sessionId: string; id: string; action: "approve" | "deny" | "takeover" | "resume"; windowId?: number }];
+    result: void;
+  };
+  computerConfigure: { args: [input: { sessionId: string; expectedRevision: number; enabled: boolean }]; result: ComputerSnapshot };
+  computerStop: { args: [input: { sessionId: string; expectedRevision: number }]; result: ComputerSnapshot };
+  computerAlwaysAllow: { args: [input: { sessionId: string; allowed: boolean }]; result: ComputerSnapshot };
+  computerSetup: { args: [permission: ComputerPermission]; result: { setupId: string } };
+  computerDismissSetup: { args: [setupId?: string]; result: void };
+  computerEndTurn: { args: [sessionId: string]; result: boolean };
 
   // Bootstrap config
   getDesktopBootstrapConfig: { args: []; result: DesktopBootstrapConfig };
