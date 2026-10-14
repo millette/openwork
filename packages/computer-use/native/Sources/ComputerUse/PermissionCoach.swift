@@ -75,6 +75,12 @@ private final class PermissionCoachDocument: NSView {
 final class PermissionCoach: NSObject, NSApplicationDelegate {
     private let initialPermission: GuidePermission
     private let hostPID = getppid()
+    /// The System Settings entry macOS lists for this request, named by the host.
+    private let entry: String? = {
+        guard let value = ProcessInfo.processInfo.environment["OPENWORK_COMPUTER_USE_ENTRY"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty, value.count <= 64 else { return nil }
+        return value
+    }()
     private var currentPermission: GuidePermission
     private var permissions: CoachPermissions?
     private var requested: Set<GuidePermission> = []
@@ -265,11 +271,12 @@ final class PermissionCoach: NSObject, NSApplicationDelegate {
         } else if ready {
             taskLabel.stringValue = "Return to OpenWork to continue."
         } else if settingsFallback.contains(currentPermission) {
-            taskLabel.stringValue = "Open System Settings and search for “\(currentPermission.settingsName)”. Turn on the app named in the macOS request."
+            taskLabel.stringValue = "Open System Settings and search for “\(currentPermission.settingsName)”. Turn on \(entryPhrase)."
         } else {
-            taskLabel.stringValue = "In \(currentPermission.settingsName), turn on the app named in the macOS request."
+            taskLabel.stringValue = "In \(currentPermission.settingsName), turn on \(entryPhrase)."
         }
-        identityLabel.stringValue = "macOS may list OpenWork or OpenWork Computer Use. Match the name in its request."
+        identityLabel.stringValue = entry.map { "Look for “\($0)” in the list. If it's already on and this still waits, turn it off and on again." }
+            ?? "Turn on the app named in the macOS request."
         identityLabel.isHidden = ready
         primaryButton?.title = permissions == nil ? "Check again" : (ready ? "Back to OpenWork" : "Open settings")
         checkButton?.isHidden = permissions == nil
@@ -279,12 +286,14 @@ final class PermissionCoach: NSObject, NSApplicationDelegate {
         if currentPermission == .screenRecording {
             help += "\nmacOS may call it “Screen & System Audio Recording”."
         }
-        help += "\nMatch the app name macOS requests. If macOS asks for Quit & Reopen, save your work, then restart OpenWork."
+        help += "\nIf macOS offers Quit & Reopen, choose Later. OpenWork checks again on its own; restart it only if this still waits."
         helpLabel.stringValue = help
         helpLabel.isHidden = !helpExpanded
         positionPanel()
         panel.recalculateKeyViewLoop()
     }
+
+    private var entryPhrase: String { entry.map { "“\($0)”" } ?? "the app named in the macOS request" }
 
     private func fitPanel(to screen: NSScreen) {
         guard let panel, let stack, let scrollView, let document = scrollView.documentView else { return }

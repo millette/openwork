@@ -31,6 +31,7 @@ import { applyBrandAppName } from "./brand-app-name.mjs";
 import { createBrowserPanel } from "./browser-panel.mjs";
 import { createComputerControl } from "./computer-control.mjs";
 import { createLocalComputerAdapter } from "./computer-local.mjs";
+import { resetPermissionEntry, resolvePermissionEntry } from "./computer-permission-entry.mjs";
 import { createWorkspaceStore } from "./workspace-store.mjs";
 import {
   buildNukeManifest,
@@ -170,13 +171,19 @@ const applicationMenu = createApplicationMenu({
 
 let browserPanel = null;
 
-// "Always allow" is the person's own choice, kept in app data outside every
-// workspace so an agent can never grant itself computer access.
-const computerAlwaysAllowPath = () => path.join(app.getPath("userData"), "computer-always-allow.json");
+// Always allow and each allowed chat are the person's own choices, kept in app
+// data outside every workspace so an agent can never grant itself access.
+const computerAllowsPath = () => path.join(app.getPath("userData"), "computer-use-allows.json");
+// The System Settings entry macOS lists for computer use: OpenWork when
+// packaged, or the terminal/editor that started a development build.
+let computerPermissionEntry = null;
+const readComputerPermissionEntry = () => (computerPermissionEntry ??= resolvePermissionEntry({ fallbackName: APP_NAME })
+  .catch(() => ({ name: APP_NAME, bundleId: null, ours: false })));
 const computerControl = createComputerControl({
   adapter: createLocalComputerAdapter({
     resourcesPath: process.resourcesPath,
     appRoot: path.resolve(__dirname, ".."),
+    permissionEntry: async () => (await readComputerPermissionEntry()).name,
     onSetupReturn: async () => {
       const window = await createMainWindow();
       if (window.isMinimized()) window.restore();
@@ -186,16 +193,26 @@ const computerControl = createComputerControl({
     },
   }),
   standing: {
-    allowed: async () => {
-      try { return JSON.parse(await readFile(computerAlwaysAllowPath(), "utf8"))?.allowed === true; }
-      catch { return false; }
+    read: async () => {
+      try {
+        const saved = JSON.parse(await readFile(computerAllowsPath(), "utf8"));
+        return { always: saved?.always === true, chats: Array.isArray(saved?.chats) ? saved.chats.filter((id) => typeof id === "string") : [] };
+      } catch { return { always: false, chats: [] }; }
     },
-    set: async (allowed) => {
-      const target = computerAlwaysAllowPath();
+    write: async (state) => {
+      const target = computerAllowsPath();
       const temporary = `${target}.${process.pid}.tmp`;
-      await writeFile(temporary, JSON.stringify({ allowed }), "utf8");
+      await writeFile(temporary, JSON.stringify(state), "utf8");
       await rename(temporary, target);
     },
+  },
+  permissionEntry: async () => {
+    const entry = await readComputerPermissionEntry();
+    return { name: entry.name, ours: entry.ours };
+  },
+  // The chat asks the person when the agent needs computer use it does not have yet.
+  onRequest: (sessionId, request) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("openwork:computer:request", { sessionId, request });
   },
 });
 /** Computer use changes app consent; only the main OpenWork window may ask. */
@@ -1940,6 +1957,26 @@ const desktopCommandHandlers = {
   "computerDismissSetup": async (event, setupId) => {
       assertComputerSender(event);
       await computerControl.dismissSetup({ setupId });
+  },
+  "computerHalt": async (event, sessionId) => {
+      assertComputerSender(event);
+      return computerControl.halt({ sessionId: String(sessionId ?? "") });
+  },
+  "computerAnswerRequest": async (event, input) => {
+      assertComputerSender(event);
+      return computerControl.answerRequest({ sessionId: String(input?.sessionId ?? ""), answer: input?.answer });
+  },
+  "computerSetFeatureEnabled": async (event, enabled) => {
+      assertComputerSender(event);
+      return computerControl.setFeatureEnabled(enabled === true);
+  },
+  "computerResetPermission": async (event, permission) => {
+      assertComputerSender(event);
+      if (permission !== "accessibility" && permission !== "screenRecording") throw new Error("Choose Accessibility or Screen Recording.");
+      // Clear only OpenWork's own stale entry, then ask macOS again with a fresh guide.
+      await resetPermissionEntry(await readComputerPermissionEntry(), permission);
+      await computerControl.dismissSetup({});
+      return computerControl.setup({ permission });
   },
   "computerEndTurn": async (event, sessionId) => {
       assertComputerSender(event);

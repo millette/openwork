@@ -95,7 +95,7 @@ import { BrowserHeaderButton, BrowserPresentationSurfaces } from "../panel/brows
 import { FloatingSlotProvider, SessionFloatingLayer } from "../panel/floating-slot";
 import { useDesktopFeature } from "../status/use-desktop-feature";
 import { ComputerControl } from "../computer/computer-control";
-import { useComputerTurnEnds } from "../computer/use-computer-turn-ends";
+import { useComputerBridge } from "../computer/computer-store";
 import { TerminalDock } from "../terminal/terminal-dock";
 import { useActivePanelTab, usePanelTabStore, useSessionPanelState } from "../panel/panel-tab-store";
 import { useWorkspaceShellLayout } from "../../../shell/workspace-shell-layout";
@@ -625,10 +625,10 @@ export function SessionPage(props: SessionPageProps) {
   });
   const { placeOpenedBrowser, handlePanelClosed: handleBrowserPanelClosed } = browserPresentation;
   // Computer use on this Mac, behind its feature flag: the header Computer
-  // button, its floating view, and the hand-back when a chat's turn ends.
+  // button, its floating view, in-chat requests and the hand-back at turn end.
   const computerUseFeature = useDesktopFeature("computerUse");
   const computerUse = computerUseFeature && isElectronRuntime() && isMacPlatform();
-  useComputerTurnEnds(props.sidebar.sessionStatusById, computerUse);
+  useComputerBridge(props.sidebar.sessionStatusById, computerUse);
 
   // Open the side panel of the conversation that owns a browser event. For the
   // conversation on screen that is the visible panel; for a background

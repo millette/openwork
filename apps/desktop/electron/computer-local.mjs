@@ -66,6 +66,7 @@ async function bounded(work, timeoutMs, signal) {
  *   fileExists?: (candidate: string) => boolean,
  *   spawnChild?: typeof spawn,
  *   onSetupReturn?: () => unknown,
+ *   permissionEntry?: () => Promise<string>,
  *   timeouts?: Partial<Record<"probe" | "handshake" | "call" | "close" | "setupPoll" | "setupLifetime", number>>,
  * }} [options]
  */
@@ -77,6 +78,7 @@ export function createLocalComputerAdapter({
   fileExists = existsSync,
   spawnChild = spawn,
   onSetupReturn = () => {},
+  permissionEntry = async () => "",
   timeouts = {},
 } = {}) {
   const limits = { probe: 5_000, handshake: 5_000, call: 120_000, close: 7_000, setupPoll: 1_000, setupLifetime: 300_000, ...timeouts };
@@ -262,7 +264,10 @@ export function createLocalComputerAdapter({
       record.lifetime.signal.throwIfAborted();
       if (record.epoch !== setupEpoch || companion !== record) throw new Error("Computer Use permission setup cancelled.");
       if (!state.binary) throw new Error(state.detail);
-      const child = spawnChild(state.binary, ["permissions-guide", permission], { env, stdio: ["pipe", "pipe", "ignore"] });
+      // The guide names the exact System Settings entry macOS will list.
+      const entry = await permissionEntry().catch(() => "");
+      const guideEnv = typeof entry === "string" && entry && entry.length <= 64 ? { ...env, OPENWORK_COMPUTER_USE_ENTRY: entry } : env;
+      const child = spawnChild(state.binary, ["permissions-guide", permission], { env: guideEnv, stdio: ["pipe", "pipe", "ignore"] });
       record.child = child;
       record.terminated = new Promise((resolve) => {
         child.once("close", () => {

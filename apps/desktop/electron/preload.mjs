@@ -159,6 +159,14 @@ contextBridge.exposeInMainWorld("__OPENWORK_ELECTRON__", {
   invokeDesktop(command, ...args) {
     return ipcRenderer.invoke("openwork:desktop", command, ...args);
   },
+  computer: {
+    // The agent needs computer use the chat does not have yet; null when answered.
+    onRequest(callback) {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on("openwork:computer:request", handler);
+      return () => ipcRenderer.removeListener("openwork:computer:request", handler);
+    },
+  },
   automationRunner: {
     onCredentialRejected(callback) {
       const handler = () => callback();

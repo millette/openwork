@@ -52,6 +52,7 @@ import type {
   BrowserStatePayload,
   OpenBrowserUrlResult,
 } from "@openwork/browser-tabs";
+import type { ComputerRequest } from "@openwork/types/desktop-ipc";
 export type { BrowserStatePayload } from "@openwork/browser-tabs";
 
 export type BrowserPresentationMode = "hidden" | "floating" | "side" | "fullscreen";
@@ -96,6 +97,9 @@ declare global {
         command: C,
         ...args: DesktopCommandArgs<C>
       ) => Promise<DesktopCommandResult<C>>;
+      computer?: {
+        onRequest?: (callback: (payload: { sessionId: string; request: ComputerRequest | null }) => void) => () => void;
+      };
       automationRunner?: {
         onCredentialRejected?: (callback: () => void) => () => void;
       };

@@ -362,7 +362,7 @@ export function ComputerPanel({ sessionId, slot, enabled, canStop, controlsBusy,
       >
         {busy === "takeover" ? "Pausing..." : busy === "resume" ? "Continuing..." : paused ? "Continue" : "Take over"}
       </Button> : null}
-      <Button size="sm" variant="ghost" className="text-red-11 hover:text-red-11" data-testid="session-computer-panel-stop" disabled={controlsBusy || !canStop} aria-busy={stopping} title="Stop computer use and revoke this chat's access" onClick={onStop}>{stopping ? "Stopping..." : "Stop"}</Button>
+      <Button size="sm" variant="ghost" className="text-red-11 hover:text-red-11" data-testid="session-computer-panel-stop" disabled={controlsBusy || !canStop} aria-busy={stopping} title="Stop this task. The chat stays allowed for your next message." onClick={onStop}>{stopping ? "Stopping..." : "Stop"}</Button>
     </footer>
     {unavailable || actionError || stopError || cleanupPending ? <p role="alert" className="max-h-24 shrink-0 overflow-y-auto border-t border-border px-3 py-2 text-[11px] leading-relaxed text-amber-11">{stopError || actionError || (cleanupPending ? "Stopping is not yet confirmed. Access stays off while release is checked." : "View unavailable. Work may still be running; Stop is available.")}</p> : null}
   </>

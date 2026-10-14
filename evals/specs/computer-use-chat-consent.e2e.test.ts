@@ -79,7 +79,7 @@ test("a person on a Mac finds computer use off in a new chat and sees what macOS
     await openPopover(user);
     await user.see(status, { text: "Off for this chat" });
     ready = await readiness(probe);
-    await user.see({ testId: "session-computer-readiness" }, { text: /^This Mac · (Ready|Setup required|Unsupported|Unavailable)$/ });
+    await user.see({ testId: "session-computer-readiness" }, { text: /^This Mac · (Ready|Setup needed|Unsupported|Unavailable)$/ });
     evidence.recordAssertionEvidence(
       "The popover reports this Mac's readiness",
       `Status reads "Off for this chat"; the bundled helper reports this Mac as ${ready}.`,
@@ -88,29 +88,22 @@ test("a person on a Mac finds computer use off in a new chat and sees what macOS
     await user.screenshot();
   });
 
-  await step("the chat stays off until the person allows it, and cannot be allowed before both permissions are verified", async () => {
-    if (ready === "ready") {
-      await user.see({ testId: "session-computer-allow" }, { text: "Allow for this chat" });
-      await switchChecked(probe, false);
-      expect((await probe.dom('[data-testid="session-computer-always-allow"][data-disabled]')).elements).toHaveLength(0);
-    } else {
-      await user.notSee({ testId: "session-computer-allow" });
-      await user.see({ text: "Set up macOS permissions first, then allow computer use." });
-      expect((await probe.dom('[data-testid="session-computer-always-allow"][data-disabled]')).elements).toHaveLength(1);
-    }
+  await step("the chat stays off until the person allows it", async () => {
+    await user.see({ testId: "session-computer-allow" }, { text: "Allow for this chat" });
+    await switchChecked(probe, false);
+    expect((await probe.dom('[data-testid="session-computer-always-allow"][data-disabled]')).elements).toHaveLength(0);
+    if (ready === "setup-required") await user.see({ text: /^macOS needs two permissions for .+ first\.$/ });
     await user.see(status, { text: "Off for this chat" });
     await headerState(probe, "off", false);
     evidence.recordAssertionEvidence(
       "Nothing turns computer use on by itself",
-      ready === "ready"
-        ? "This Mac is ready: \"Allow for this chat\" and Always allow are offered, and the chat stays off until one is chosen."
-        : `This Mac reports ${ready}: "Allow for this chat" is not offered, Always allow is disabled, and the chat stays off.`,
+      `"Allow for this chat" and Always allow are offered (this Mac reports ${ready}), and the chat stays off until the person chooses one.`,
       true,
     );
     await user.screenshot();
   });
 
-  await step("the setup guide lists Accessibility and Screen Recording with what the helper verified", async () => {
+  await step("the setup checklist names the macOS entry and shows each permission as the helper verified it", async () => {
     if (ready === "unsupported") {
       expect((await probe.dom('[data-testid="session-computer-setup"]:disabled')).elements).toHaveLength(1);
       evidence.recordAssertionEvidence("Setup is not offered on an unsupported Mac", "This Mac is unsupported, so the permissions guide button is disabled.", true);
@@ -119,28 +112,25 @@ test("a person on a Mac finds computer use off in a new chat and sees what macOS
     }
     await user.click({ testId: "session-computer-setup" });
     await user.see({ testId: "session-computer-setup-dialog" });
-    await user.see({ text: "Computer use on this Mac" });
-    const badge = async (permission: string) => {
-      const dom = await probe.dom(`[data-testid="session-computer-permission-${permission}"]`);
-      expect(dom.elements).toHaveLength(1);
-      return dom.elements[0].text;
+    await user.see({ text: "Set up computer use" });
+    const row = async (item: string) => {
+      expect((await probe.dom(`[data-testid="session-computer-permission-${item}"]`)).elements).toHaveLength(1);
+      for (const state of ["done", "waiting", "todo"]) {
+        if ((await probe.dom(`[data-testid="session-computer-permission-${item}"][data-state="${state}"]`)).elements.length === 1) return state;
+      }
+      return "unknown";
     };
-    const accessibility = await badge("accessibility");
-    const screenRecording = await badge("screenRecording");
-    const shown = [accessibility, screenRecording];
-    for (const value of shown) expect(["Verified", "Not granted", "Not verified"]).toContain(value);
-    if (ready === "ready") {
-      expect(shown).toEqual(["Verified", "Verified"]);
-      await user.see({ text: "Both permissions verified" });
-    } else if (ready === "setup-required") {
-      expect(shown).toContain("Not granted");
-      await user.see({ text: "Permissions needed" });
-    } else {
-      expect(shown).toEqual(["Not verified", "Not verified"]);
-    }
+    const accessibility = await row("accessibility");
+    const screenRecording = await row("screenRecording");
+    expect(await row("chat")).toBe("todo");
+    if (ready === "ready") expect([accessibility, screenRecording]).toEqual(["done", "done"]);
+    else if (ready === "setup-required") expect([accessibility, screenRecording]).toContain("todo");
+    // The checklist names the exact entry macOS lists, never a guess between two apps.
+    const entry = (await probe.dom('[data-testid="session-computer-entry"]')).elements[0]?.text ?? "";
+    if (ready !== "ready" || accessibility !== "done") expect(entry).not.toBe("");
     evidence.recordAssertionEvidence(
-      "The guide shows both macOS permissions as the helper verified them",
-      `Accessibility: ${accessibility}; Screen Recording: ${screenRecording} (this Mac reports ${ready}). Opening the guide changed nothing.`,
+      "The checklist shows both macOS permissions as the helper verified them and names the entry to turn on",
+      `Accessibility: ${accessibility}; Screen Recording: ${screenRecording}; this chat: not allowed yet (this Mac reports ${ready}). Entry to turn on: "${entry}". Opening the checklist changed nothing.`,
       true,
     );
     await user.screenshot();
@@ -151,34 +141,34 @@ test("a person on a Mac finds computer use off in a new chat and sees what macOS
 });
 
 test("a person allows computer use for one chat, then for every chat, and stops it", async ({ user, probe, step, evidence }) => {
-  // Consent is offered only once the helper verifies both macOS permissions.
-  // Those are a person's System Settings choice, never granted by the test.
+  // Allowing a chat is the person's choice in OpenWork and does not need the
+  // macOS permissions; those stay a System Settings choice the test never makes.
   await user.see({ role: "button", label: "Computer use: Off for this chat" }, { timeoutMs: 60_000 });
   await openPopover(user);
   const ready = await readiness(probe);
-  if (ready !== "ready") {
+  if (ready === "unsupported" || ready === "unavailable") {
     await user.press("Escape");
-    throw new SkipError(`grant Accessibility and Screen Recording to the OpenWork Computer Use helper in System Settings (this Mac reports ${ready}, so "Allow for this chat" and Always allow are not offered)`);
+    throw new SkipError(`computer use needs macOS 14 or later with the OpenWork Computer Use helper (this Mac reports ${ready})`);
   }
 
-  await step("before: this Mac is ready and the chat is still off", async () => {
+  await step("before: the chat is still off", async () => {
     await user.see(status, { text: "Off for this chat" });
     await user.see({ testId: "session-computer-allow" }, { text: "Allow for this chat" });
     await headerState(probe, "off", false);
-    evidence.recordAssertionEvidence("A ready Mac still starts each chat off", "The helper reports Ready; the chat reads \"Off for this chat\" with no green dot.", true);
+    evidence.recordAssertionEvidence("Each chat starts off", `The chat reads "Off for this chat" with no green dot (this Mac reports ${ready}).`, true);
     await user.screenshot();
   });
 
-  await step("after: Allow for this chat turns the Computer button on with a green dot and opens the Computer view", async () => {
+  await step("after: Allow for this chat turns the Computer button on with a green dot", async () => {
     await user.click({ testId: "session-computer-allow" });
     await user.see(status, { text: "Allowed for this chat" });
     await headerState(probe, "allowed", true);
-    await user.see({ testId: "session-computer-floating" });
     await user.see({ testId: "session-computer-stop" }, { text: "Stop & revoke" });
+    await user.notSee({ testId: "session-computer-allow" });
     await switchChecked(probe, false);
     evidence.recordAssertionEvidence(
-      "Allowing one chat turns it on",
-      "Status reads \"Allowed for this chat\"; the header button shows its green dot, the floating Computer view is shown and Always allow stays off.",
+      "Allowing one chat turns it on and keeps it on",
+      "Status reads \"Allowed for this chat\"; the header button shows its green dot, Allow is no longer offered and Always allow stays off.",
       true,
     );
     await user.screenshot();
@@ -188,11 +178,10 @@ test("a person allows computer use for one chat, then for every chat, and stops 
     await user.click({ testId: "session-computer-stop" });
     await user.see(status, { text: "Off for this chat" });
     await headerState(probe, "off", false);
-    await user.notSee({ testId: "session-computer-floating" });
     await user.see({ testId: "session-computer-allow" });
     evidence.recordAssertionEvidence(
       "Stop & revoke ends this chat's access",
-      "Status is back to \"Off for this chat\"; the green dot and the Computer view are gone and \"Allow for this chat\" is offered again.",
+      "Status is back to \"Off for this chat\"; the green dot is gone and \"Allow for this chat\" is offered again.",
       true,
     );
     await user.screenshot();
@@ -211,15 +200,17 @@ test("a person allows computer use for one chat, then for every chat, and stops 
     await user.screenshot();
   });
 
-  await step("turning Always allow off returns the chat to asking first", async () => {
+  await step("turning Always allow off keeps this chat allowed, and Stop & revoke turns it off", async () => {
     await user.click({ testId: "session-computer-always-allow" });
     await switchChecked(probe, false);
+    await user.see(status, { text: "Allowed for this chat" });
+    await headerState(probe, "allowed", true);
+    await user.click({ testId: "session-computer-stop" });
     await user.see(status, { text: "Off for this chat" });
     await headerState(probe, "off", false);
-    await user.notSee({ testId: "session-computer-floating" });
     evidence.recordAssertionEvidence(
-      "Turning Always allow off revokes access",
-      "The switch is off, status reads \"Off for this chat\", the green dot and Computer view are gone.",
+      "Turning Always allow off never takes away a chat the person is using",
+      "With the switch off, this chat still reads \"Allowed for this chat\"; Stop & revoke then turns it off and leaves the test profile clean.",
       true,
     );
     await user.screenshot();
