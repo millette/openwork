@@ -179,7 +179,9 @@ export type AdminFeature = {
     | "remoteSessionEvents"
     | "backgroundShellTasks"
     | "orgDefaultModel"
-    | "gatewayProviderUsageLimits";
+    | "gatewayProviderUsageLimits"
+    | "computerUse"
+    | "browserFloatingView";
   label: string;
   description: string;
   since: string;
@@ -235,6 +237,8 @@ export type AdminOrganizationsPageResponse = {
       backgroundShellTasks: boolean;
       orgDefaultModel: boolean;
       gatewayProviderUsageLimits: boolean;
+      computerUse: boolean;
+      browserFloatingView: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -391,6 +395,24 @@ export type AdminOrganizationsPageResponse = {
         overrideApplies: boolean;
       };
       gatewayProviderUsageLimits: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      computerUse: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      browserFloatingView: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -479,6 +501,8 @@ export type AdminOverviewResponse = {
       backgroundShellTasks: boolean;
       orgDefaultModel: boolean;
       gatewayProviderUsageLimits: boolean;
+      computerUse: boolean;
+      browserFloatingView: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -635,6 +659,24 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       gatewayProviderUsageLimits: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      computerUse: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      browserFloatingView: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -6442,6 +6484,8 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       backgroundShellTasks: boolean;
       orgDefaultModel: boolean;
       gatewayProviderUsageLimits: boolean;
+      computerUse: boolean;
+      browserFloatingView: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -6598,6 +6642,24 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       gatewayProviderUsageLimits: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      computerUse: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      browserFloatingView: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -6674,6 +6736,8 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       backgroundShellTasks: boolean;
       orgDefaultModel: boolean;
       gatewayProviderUsageLimits: boolean;
+      computerUse: boolean;
+      browserFloatingView: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -6830,6 +6894,24 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       gatewayProviderUsageLimits: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      computerUse: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      browserFloatingView: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;

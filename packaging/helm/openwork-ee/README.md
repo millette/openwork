@@ -379,6 +379,8 @@ OpenWork Cloud. Don't change it on a customer install.
 | `backgroundShellTasks` | `DEN_FEATURE_BACKGROUND_SHELL_TASKS` | default off | The desktop chat shows how many commands the agent left running in the background, and adds a short row when each one finishes. |
 | `orgDefaultModel` | `DEN_FEATURE_ORG_DEFAULT_MODEL` | default off | Organization admins choose the model new desktop chats start with, for everyone or per team. Applies to the OpenCode v2 engine only; members can still change the model in each chat. |
 | `gatewayProviderUsageLimits` | `DEN_FEATURE_GATEWAY_PROVIDER_USAGE_LIMITS` | default off | Admins can attach a spend limit to one AI provider. Spend on that provider counts toward its own limit instead of the default limit, and members see which provider ran out. |
+| `computerUse` | `DEN_FEATURE_COMPUTER_USE` | default off | A Computer button in the chat header lets the agent work in one Mac app window the person approves. The person allows it per chat or always, watches a floating live view, can take over or stop at any time, and sees the agent's cursor on screen. |
+| `browserFloatingView` | `DEN_FEATURE_BROWSER_FLOATING_VIEW` | default off | The built-in browser can float as a small live card over the chat, sit beside it, or fill the window, with a Browser button in the chat header that shows when it needs the person. |
 <!-- END GENERATED features -->
 
 The table and the `config.features` block are generated: run `pnpm features:sync`

@@ -172,6 +172,20 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  computerUse: {
+    label: "Desktop: computer use on this Mac",
+    description: "A Computer button in the chat header lets the agent work in one Mac app window the person approves. The person allows it per chat or always, watches a floating live view, can take over or stop at any time, and sees the agent's cursor on screen.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+  browserFloatingView: {
+    label: "Desktop: floating and full-screen browser",
+    description: "The built-in browser can float as a small live card over the chat, sit beside it, or fill the window, with a Browser button in the chat header that shows when it needs the person.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
 })
 
 export type FeatureKey = keyof typeof FEATURES
