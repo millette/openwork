@@ -384,7 +384,10 @@ export async function executeCapabilityWithBudget<T extends ExecuteCapabilityToo
   }
 }
 
-export function createAgentMcpServer(options: { appServers?: boolean; remoteSessionEvents?: boolean } = {}): McpServer {
+/** Rolled out with `remote-session:status`; one rule, the details live in its description. */
+const REMOTE_SESSION_STATUS_INSTRUCTIONS = "To follow remote sessions, call remote-session:status with all of their commandIds or Cloud sessionIds and waitMs instead of calling remote-session:read repeatedly; read only for the transcript or the full answer."
+
+export function createAgentMcpServer(options: { appServers?: boolean; remoteSessionEvents?: boolean; remoteSessionStatus?: boolean } = {}): McpServer {
   return new McpServer({
     name: "openwork-den-api-agent",
     version: "1.0.0",
@@ -395,7 +398,8 @@ export function createAgentMcpServer(options: { appServers?: boolean; remoteSess
       resources: { listChanged: true, ...(options.remoteSessionEvents ? { subscribe: true } : {}) },
     },
     instructions: [options.appServers === false ? LEGACY_AGENT_MCP_INSTRUCTIONS : AGENT_MCP_INSTRUCTIONS,
-      ...(options.remoteSessionEvents ? [REMOTE_SESSION_RECEIPT_INSTRUCTIONS] : [])].join("\n"),
+      ...(options.remoteSessionEvents ? [REMOTE_SESSION_RECEIPT_INSTRUCTIONS] : []),
+      ...(options.remoteSessionStatus ? [REMOTE_SESSION_STATUS_INSTRUCTIONS] : [])].join("\n"),
   })
 }
 
@@ -592,7 +596,11 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
     const receiptScope = { organizationId, createdByUserId: normalizeDenTypeId("user", principal.userId) }
     const receiptStores = { commandStore: databaseRemoteSessionCommandStore, requestStore: databaseRemoteSessionRequestStore }
     const remoteSessionEventsEnabled = Boolean(memberIdentity && organizationFeatures.remoteSessionEvents)
-    const server = createAgentMcpServer({ appServers: appServersEnabled, remoteSessionEvents: remoteSessionEventsEnabled })
+    const server = createAgentMcpServer({
+      appServers: appServersEnabled,
+      remoteSessionEvents: remoteSessionEventsEnabled,
+      remoteSessionStatus: Boolean(memberIdentity && organizationFeatures.remoteSessionSubagents),
+    })
     if (remoteSessionEventsEnabled) registerRemoteSessionReceiptResources({ server, ...receiptStores, ...receiptScope })
     registerAgentConnectionActionApp(server, { organizationId: principal.organizationId, member: memberIdentity })
     if (appServersEnabled) {

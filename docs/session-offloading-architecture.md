@@ -61,6 +61,16 @@ remote session lifecycle.
    route control requests back to the owning runner. A pending request returns
    `requestId`; reading that ID collects its eventual receipt.
 5. `remote-session:list`: inspect the caller's admitted local sessions.
+6. `remote-session:status` (behind `remoteSessionSubagents`): follow up to ten
+   sessions in one call, desktop and registered ones by `commandId`, Cloud ones
+   by `sessionId`. Each result is a compact state (`starting`, `running`,
+   `waiting` with `waitingFor`, `idle` with a short answer preview, `error`) and
+   a version. A caller passes back the versions it holds, so an unchanged
+   session costs its ref and version only, and `waitMs` (up to 20 s) holds the
+   call until one changes. Settled sessions end the wait at once. A desktop
+   command is one indexed read of the receipt its runner already reports; a
+   Cloud session is a small worker read of its last messages, run state and,
+   only while it runs, pending requests. Use `read` for the transcript.
 
 Cloud remains the default create target and retains its existing access and
 worker lifecycle. `target: "desktop"` and legacy wire names stay compatible.
@@ -70,6 +80,16 @@ Use a stable `idempotencyKey` for desktop/registered create retries. Den scopes
 it to the authenticated organization and user and refuses different arguments
 under the same key. Cloud creation does not currently support this argument;
 callers must not infer a guarantee from an ignored key.
+
+The desktop chat shows a session its agent started as a sub-agent row: where
+it runs, whether it is working, waiting on the person or finished, and its
+answer. Its routes under `/v1/remote-sessions/` run these same capabilities
+with the member's own session. One loop in the app follows every shown
+session with one waiting `status` call at a time, not while the window is
+hidden or offline, and stops once they settle. The transcript is read only
+while the person has the session open, when its status changes; follow-ups
+and stop go through `send` and `stop`. Answering a pending permission or
+question stays on the computer that runs the session.
 
 Slack uses the same capabilities and trusted run-token provenance to post a
 result back to its originating thread. A model cannot choose an arbitrary

@@ -7,6 +7,7 @@ import {
   ArrowRight,
   Globe,
   Loader2,
+  MessagesSquare,
   ShieldOff,
   Plus,
   RotateCw,
@@ -29,6 +30,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ArtifactIcon } from "../artifacts/artifact-icon";
 import { AppArtifact } from "../../apps/app-artifact";
 import { ArtifactPanel } from "../artifacts/artifact-panel";
+import { RemoteThreadPanel } from "../remote-threads/remote-thread-panel";
 import {
   type BrowserPanelTab,
   usePanelTabStore,
@@ -146,7 +148,7 @@ function SidePanelTab({ tab, active, onSelect, onClose }: SidePanelTabProps) {
             ) : (
               <Globe />
             )
-          ) : (tab.type === "app" || tab.type === "mcp-app") ? <Blocks /> : (
+          ) : (tab.type === "app" || tab.type === "mcp-app") ? <Blocks /> : tab.type === "remote-thread" ? <MessagesSquare /> : (
             <ArtifactIcon type={tab.preview} />
           )}
           <span className="min-w-0 flex-1 truncate text-left">{tab.label}</span>
@@ -770,6 +772,8 @@ export function SidePanel({
           <BrowserPanelContent sessionId={sessionId} tab={activeTab} onClose={onClose} />
         ) : activeTab?.type === "mcp-app" ? (
           <BuiltMcpAppPanel key={activeTab.id} tab={activeTab} onClose={onClose} />
+        ) : activeTab?.type === "remote-thread" ? (
+          <div className="min-h-0 flex-1 overflow-hidden"><RemoteThreadPanel key={activeTab.id} tab={activeTab} /></div>
         ) : activeTab?.type === "app" ? (
           <div className="min-h-0 flex-1 overflow-hidden"><AppArtifact key={activeTab.id} appId={activeTab.appId} revisionId={activeTab.revisionId} receiptId={activeTab.receiptId} onClose={onClose} /></div>
         ) : activeTab?.type === "artifact" ? (

@@ -26,20 +26,21 @@ config:
   #   "false" off for everyone; /admin shows "Set by deployment config"
   # The /admin kill switch still turns a feature off, even when locked on.
   features:
-    teamMembershipCache: ""   # default off · Reduce repeated team lookups while keeping access changes immediate. Enable only after every API instance runs revision-aware team writes.
-    managedDeploymentsGcp: "" # default off (cloud only) · Organization admins approve OpenWork installations in their own Google Cloud project and track health and updates.
-    managedDeployments: ""    # default off (cloud only) · Organization admins install OpenWork in their own cloud account (AWS first) and see its health and updates in OpenWork.
-    slackAssistant: ""        # default off · Answers Slack mentions and DMs for the organization after the Slack connector is set up.
-    slackWorkbotReplies: ""   # default off · OpenWork in Slack writes its reply as it works, reacts to messages with an emoji, and takes bigger jobs into the background, posting the result in the thread when done.
-    workbot: ""               # default off · Members can use Workbot, with side chats, a Calendar tab of its scheduled work and the option to run stopped tasks again, and organization admins choose the default model Workbot, the Slack assistant and cloud Automations answer with. Needs the deployment's Workbot app.
-    automationCalendar: ""    # default off · Members see a Calendar in the desktop app with their Automations next to meetings from their connected Google or Outlook calendar.
-    permissions: ""           # default off · Organization admins choose what members, admins and each team can do, instead of the fixed Member and Admin defaults.
-    teamRoles: ""             # default off · Members › Teams shows each team's role (Member, Admin or Custom) with one Change role action, and Members gets a Roles tab to see and create roles.
-    sharedRoles: ""           # default off · A custom role can be given to more than one team: Change role lists every role, each role's page lists its teams, and a role can be created before any team has it. Needs Team roles and Permissions.
-    agentPermissions: ""      # default off · Organization admins choose what agents can do on members' computers: run commands, edit files, open websites and use local skills and MCP servers, for everyone or per team.
-    engineV2Upgrade: ""       # default off · Desktop members still on OpenCode v1 see a short notice offering to upgrade: their chats are copied to v2 with a backup, then OpenWork switches engines.
-    remoteSessionEvents: ""   # default off · MCP clients can subscribe to changes in their remote session receipts and read the current state after reconnecting.
-    backgroundShellTasks: ""  # default off · The desktop chat shows how many commands the agent left running in the background, and adds a short row when each one finishes.
+    teamMembershipCache: ""    # default off · Reduce repeated team lookups while keeping access changes immediate. Enable only after every API instance runs revision-aware team writes.
+    managedDeploymentsGcp: ""  # default off (cloud only) · Organization admins approve OpenWork installations in their own Google Cloud project and track health and updates.
+    managedDeployments: ""     # default off (cloud only) · Organization admins install OpenWork in their own cloud account (AWS first) and see its health and updates in OpenWork.
+    slackAssistant: ""         # default off · Answers Slack mentions and DMs for the organization after the Slack connector is set up.
+    slackWorkbotReplies: ""    # default off · OpenWork in Slack writes its reply as it works, reacts to messages with an emoji, and takes bigger jobs into the background, posting the result in the thread when done.
+    workbot: ""                # default off · Members can use Workbot, with side chats, a Calendar tab of its scheduled work and the option to run stopped tasks again, and organization admins choose the default model Workbot, the Slack assistant and cloud Automations answer with. Needs the deployment's Workbot app.
+    automationCalendar: ""     # default off · Members see a Calendar in the desktop app with their Automations next to meetings from their connected Google or Outlook calendar.
+    permissions: ""            # default off · Organization admins choose what members, admins and each team can do, instead of the fixed Member and Admin defaults.
+    teamRoles: ""              # default off · Members › Teams shows each team's role (Member, Admin or Custom) with one Change role action, and Members gets a Roles tab to see and create roles.
+    sharedRoles: ""            # default off · A custom role can be given to more than one team: Change role lists every role, each role's page lists its teams, and a role can be created before any team has it. Needs Team roles and Permissions.
+    agentPermissions: ""       # default off · Organization admins choose what agents can do on members' computers: run commands, edit files, open websites and use local skills and MCP servers, for everyone or per team.
+    engineV2Upgrade: ""        # default off · Desktop members still on OpenCode v1 see a short notice offering to upgrade: their chats are copied to v2 with a backup, then OpenWork switches engines.
+    remoteSessionEvents: ""    # default off · MCP clients can subscribe to changes in their remote session receipts and read the current state after reconnecting.
+    backgroundShellTasks: ""   # default off · The desktop chat shows how many commands the agent left running in the background, and adds a short row when each one finishes.
+    remoteSessionSubagents: "" # default off · A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop.
   # END GENERATED features
   tenancy:
     mode: single_org

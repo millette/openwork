@@ -197,7 +197,15 @@ export interface AgentSessionClient {
   abortThread(threadId: string, input?: { signal?: AbortSignal }): Promise<HeadlessAbortResult>;
 }
 
+/** What a running thread waits on the person for, if anything. */
+export type HeadlessThreadWaitingFor = "permission" | "question" | null;
+
 export interface HeadlessThreadClient extends AgentSessionClient {
+  /**
+   * The pending permission or question that holds a thread, read from the
+   * engine's own request lists. Two small reads; no transcript.
+   */
+  getThreadWaitingFor(threadId: string, input?: { signal?: AbortSignal }): Promise<HeadlessThreadWaitingFor>;
   waitForThread(threadId: string, input: HeadlessThreadWaitInput): Promise<HeadlessThreadWaitResult>;
   waitUntilIdle(threadId: string, input: HeadlessThreadWaitInput): Promise<HeadlessThreadWaitResult>;
   exportTranscript(threadId: string, input?: { signal?: AbortSignal }): Promise<HeadlessThreadTranscript>;

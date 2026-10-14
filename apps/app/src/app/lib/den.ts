@@ -9,6 +9,11 @@ import {
 } from "@openwork/types/automations";
 import type { GatewayProviderSummary } from "@openwork/types/den/gateway";
 import { workbotSettingsSchema } from "@openwork/types/den/workbot-settings";
+import {
+  remoteSessionStatusResultSchema,
+  type RemoteSessionStatusRequest,
+  type RemoteSessionStatusResult,
+} from "@openwork/types/automations";
 import { parseDenMcpDiscovery, type DenMcpDiscovery } from "./den-mcp-discovery";
 import type {
   AutomationDetail,
@@ -2724,6 +2729,8 @@ type DenRequestOptions = {
   timeoutMs?: number;
   organizationId?: string | null;
   automationModelAttentionCapable?: boolean;
+  /** Cancels the request, e.g. a waiting status call when the window hides. */
+  signal?: AbortSignal;
 };
 
 async function fetchWithTimeout(fetchImpl: FetchLike, url: string, init: RequestInit, timeoutMs: number, onTimeout?: () => void) {
@@ -2733,7 +2740,12 @@ async function fetchWithTimeout(fetchImpl: FetchLike, url: string, init: Request
 
   const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
   const signal = controller?.signal;
-  const initWithSignal = signal && !init.signal ? { ...init, signal } : init;
+  // A caller's own signal still cancels; the timeout aborts the fetch too when both can be combined.
+  const initWithSignal = signal && !init.signal
+    ? { ...init, signal }
+    : signal && init.signal && typeof AbortSignal.any === "function"
+      ? { ...init, signal: AbortSignal.any([init.signal, signal]) }
+      : init;
 
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   const timeoutPromise = new Promise<never>((_, reject) => {
@@ -2788,6 +2800,7 @@ async function requestJsonRaw<T>(
         headers,
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
         credentials: "include",
+        ...(options.signal ? { signal: options.signal } : {}),
       },
       options.timeoutMs ?? DEFAULT_DEN_TIMEOUT_MS,
       onTimeout,
@@ -3365,6 +3378,27 @@ export function createDenClient(options: {
         `/v1/automation-runs?${params.toString()}`,
         { method: "GET", token, organizationId: orgId, automationModelAttentionCapable: true },
       );
+    },
+
+    /**
+     * Compact, versioned status of up to ten of the member's remote sessions.
+     * With waitMs, Den holds the call until one changes, so the timeout
+     * covers the wait.
+     */
+    async getRemoteSessionStatus(orgId: string, input: RemoteSessionStatusRequest, options: { signal?: AbortSignal } = {}): Promise<RemoteSessionStatusResult> {
+      const payload = await requestJson<unknown>(baseUrls, "/v1/remote-sessions/status", {
+        method: "POST", token, organizationId: orgId, body: input, signal: options.signal,
+        timeoutMs: (input.waitMs ?? 0) + DEFAULT_DEN_TIMEOUT_MS,
+      });
+      return remoteSessionStatusResultSchema.parse(payload);
+    },
+
+    /** A transcript page or pending receipt of one of the member's remote sessions; the caller parses it. */
+    async remoteSessionAction(orgId: string, action: "read" | "send" | "stop", input: Record<string, unknown>): Promise<unknown> {
+      // A desktop has about 20 seconds to answer before Den returns a requestId instead.
+      return requestJson<unknown>(baseUrls, `/v1/remote-sessions/${action}`, {
+        method: "POST", token, organizationId: orgId, body: input, timeoutMs: 35_000,
+      });
     },
 
     /** The existing organization default-model settings, subject to Den's feature and permission guards. */

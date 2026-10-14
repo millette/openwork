@@ -73,7 +73,7 @@ function fixtures(options: { active?: boolean; capabilities?: AutomationDesktopR
     async saveDesktopRunnerInventory() { return true },
   }
   const commandStore: RemoteSessionCommandStore = {
-    async enqueue() { return command }, async get() { return command }, async latestSettled() { return null },
+    async enqueue() { return command }, async get() { return command }, async getMany() { return [command] }, async latestSettled() { return null },
     async findDesktopSession() { return null }, async listDesktopSessions() { return [] }, async markTurnStarted() { calls.push("reset") },
     async listPendingForRunner() { calls.push("pending-command"); return [{ ...command, id: "command_pending", status: "pending" }] },
     async listRecoverableForRunner(input) { assert.deepEqual(input.runnerId, scope.runnerId); calls.push("recover-command"); return [command] },

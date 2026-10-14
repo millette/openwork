@@ -27,6 +27,7 @@ import type {
   HeadlessThreadTurnInput,
   HeadlessThreadWaitInput,
   HeadlessThreadWaitResult,
+  HeadlessThreadWaitingFor,
   HeadlessTurnAcceptance,
 } from "./types.js";
 import {
@@ -74,6 +75,13 @@ const effectiveProvidersSchema = z.object({
     models: z.record(z.string(), z.object({}).passthrough()),
   })),
 });
+
+/** v1 lists every session's pending requests; v2 lists one session's, sometimes wrapped in `data`. */
+const pendingRequestRowSchema = z.object({ sessionID: z.string().optional() }).passthrough();
+const pendingRequestListSchema = z.union([
+  z.array(pendingRequestRowSchema),
+  z.object({ data: z.array(pendingRequestRowSchema) }).passthrough(),
+]).transform((value) => Array.isArray(value) ? value : value.data);
 
 const v2ModelEntrySchema = z.object({ providerID: z.string(), id: z.string() }).passthrough();
 const v2ModelCatalogSchema = z.union([
@@ -349,6 +357,8 @@ export function createHeadlessThreadClient(options: HeadlessThreadClientOptions)
     snapshot(threadId: string, input?: { signal?: AbortSignal; limit?: number }): Promise<HeadlessThreadSnapshot>;
     abort(threadId: string, signal?: AbortSignal): Promise<boolean>;
     sessionModel(threadId: string, signal?: AbortSignal): Promise<HeadlessThreadModel | null>;
+    /** Pending permission and question requests, as two lists. */
+    pending(threadId: string, signal?: AbortSignal): Promise<{ permissions: number; questions: number }>;
   }
 
   const v1: Transport = {
@@ -417,6 +427,17 @@ export function createHeadlessThreadClient(options: HeadlessThreadClientOptions)
     // v1 falls back to the engine's own default; there is nothing to read.
     async sessionModel() {
       return null;
+    },
+    // v1 lists pending requests for every session in the workspace.
+    async pending(threadId, signal) {
+      const [permissions, questions] = await Promise.all([
+        json(pendingRequestListSchema, "GET", `${opencodePath}/permission`, { signal }),
+        json(pendingRequestListSchema, "GET", `${opencodePath}/question`, { signal }),
+      ]);
+      return {
+        permissions: permissions.filter((row) => row.sessionID === threadId).length,
+        questions: questions.filter((row) => row.sessionID === threadId).length,
+      };
     },
   };
 
@@ -517,6 +538,14 @@ export function createHeadlessThreadClient(options: HeadlessThreadClientOptions)
     },
     async sessionModel(threadId, signal) {
       return v2SessionModel(await v2Session(threadId, signal));
+    },
+    // v2 scopes both lists to the session; questions are forms.
+    async pending(threadId, signal) {
+      const [permissions, forms] = await Promise.all([
+        json(pendingRequestListSchema, "GET", `${v2SessionPath(threadId)}/permission`, { signal }),
+        json(pendingRequestListSchema, "GET", `${v2SessionPath(threadId)}/form`, { signal }),
+      ]);
+      return { permissions: permissions.length, questions: forms.length };
     },
   };
 
@@ -697,6 +726,12 @@ export function createHeadlessThreadClient(options: HeadlessThreadClientOptions)
     }
   }
 
+  async function getThreadWaitingFor(threadId: string, input?: { signal?: AbortSignal }): Promise<HeadlessThreadWaitingFor> {
+    const pending = await (await transport(input?.signal)).pending(threadId, input?.signal);
+    // A permission blocks the run outright, so it is the one to surface.
+    return pending.permissions > 0 ? "permission" : pending.questions > 0 ? "question" : null;
+  }
+
   async function abortThread(threadId: string, input?: { signal?: AbortSignal }): Promise<HeadlessAbortResult> {
     const accepted = await (await transport(input?.signal)).abort(threadId, input?.signal);
     return { threadId, accepted };
@@ -706,5 +741,5 @@ export function createHeadlessThreadClient(options: HeadlessThreadClientOptions)
     return toTranscript(await getThreadSnapshot(threadId, input));
   }
 
-  return { createThread, sendTurn, waitForThread, waitUntilIdle, getThreadSnapshot, abortThread, exportTranscript };
+  return { createThread, sendTurn, waitForThread, waitUntilIdle, getThreadSnapshot, getThreadWaitingFor, abortThread, exportTranscript };
 }

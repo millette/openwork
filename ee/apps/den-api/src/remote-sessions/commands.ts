@@ -128,6 +128,8 @@ export interface RemoteSessionCommandStore {
    */
   report(input: ReportInput): Promise<RemoteSessionReportResult>
   get(input: { commandId: string; organizationId: string; createdByUserId: string }): Promise<RemoteSessionCommand | null>
+  /** Several of the caller's commands in one read, for status checks; unknown ids are left out. */
+  getMany(input: { commandIds: readonly string[]; organizationId: string; createdByUserId: string }): Promise<RemoteSessionCommand[]>
   /** The owner's command that most recently delivered or failed after `since`, or null. */
   latestSettled(input: { organizationId: string; ownerMemberId: string; since: number }): Promise<RemoteSessionCommand | null>
   listPendingForRunner(input: {
@@ -521,6 +523,27 @@ export const databaseRemoteSessionCommandStore: RemoteSessionCommandStore = {
       eq(RemoteSessionCommandTable.created_by_user_id, createdByUserId),
     )).limit(1)
     return updated[0] ? mapCommand(updated[0]) : null
+  },
+
+  async getMany(input) {
+    const commandIds = [...new Set(input.commandIds.flatMap((id) => commandIdOrNull(id) ?? []))]
+    if (commandIds.length === 0) return []
+    const scope = {
+      organizationId: normalizeDenTypeId("organization", input.organizationId),
+      createdByUserId: normalizeDenTypeId("user", input.createdByUserId),
+    }
+    const rows = await db.select().from(RemoteSessionCommandTable).where(and(
+      inArray(RemoteSessionCommandTable.id, commandIds),
+      eq(RemoteSessionCommandTable.org_id, scope.organizationId),
+      eq(RemoteSessionCommandTable.created_by_user_id, scope.createdByUserId),
+    ))
+    const now = Date.now()
+    // An unclaimed command past its expiry reads through get(), which records the expiry.
+    return Promise.all(rows.map(mapCommand).map(async (command) => (
+      ["pending", "claimed"].includes(command.status) && command.expiresAt <= now
+        ? await databaseRemoteSessionCommandStore.get({ commandId: command.id, ...scope }) ?? command
+        : command
+    )))
   },
 
   async listPendingForRunner(input) {

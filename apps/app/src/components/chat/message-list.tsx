@@ -109,6 +109,9 @@ import { dedupeRenderedTurnErrors } from "@/react-app/domains/session/sync/trans
 import { builtMcpAppId, hasPreservedMcpAppResult, isNativeConnectionAppLaunch, McpAppFrame } from "@/components/chat/mcp-app-frame"
 import { ReasoningBlock } from "@/components/chat/reasoning-block"
 import { SubagentRunLine } from "@/components/chat/subagent-run-line"
+import { RemoteThreadRunLine } from "@/components/chat/remote-thread-run-line"
+import { isRemoteThreadStatusCheck, remoteThreadFromToolPart, type RemoteThreadStart } from "@/lib/remote-session-thread"
+import { useRemoteThreadsEnabled, useReviveRemoteThread } from "@/react-app/domains/session/remote-threads/remote-thread-store"
 import { ToolAggregateGroup } from "@/components/chat/tool-aggregate-group"
 import {
   CurrentToolLifecycleProvider,
@@ -153,6 +156,9 @@ const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
 const COLLAPSED_STEP_RUN_MIN_ROWS = 4
 
 const AppCreationPartsContext = React.createContext<ReadonlySet<string>>(new Set())
+/** Remote task rows a folded turn shows below its fold; inside it they render nothing. */
+const NO_PINNED_REMOTE_THREADS: ReadonlySet<string> = new Set()
+const PinnedRemoteThreadsContext = React.createContext<ReadonlySet<string>>(NO_PINNED_REMOTE_THREADS)
 const ParentRunActiveContext = React.createContext(true)
 
 function MessageTimestamp({ message, className }: { message: UIMessage; className?: string }) {
@@ -239,6 +245,10 @@ function isReservedConnectionQuestionPart(part: ToolUIPart | DynamicToolUIPart):
 
 const ToolMessageInner = ({ part }: ToolMessageProps) => {
   const { connectorIdentities, onMcpReconnect, onMcpReopenAuthorization, connectionQuestionToolCallId, getConnectionDecision } = useMessageList()
+  const remoteThreads = useRemoteThreadsEnabled()
+  const pinnedRemoteThreads = React.useContext(PinnedRemoteThreadsContext)
+  // The agent following up on a task the chat shows makes it run again.
+  useReviveRemoteThread(remoteThreads && part.type === "dynamic-tool" ? part : null)
   const parentActive = React.useContext(ParentRunActiveContext)
   const resolveLifecycle = useCurrentToolLifecycleResolver()
   const lifecycle = resolveLifecycle(part.toolCallId, isToolPartInFlight(part))
@@ -250,8 +260,28 @@ const ToolMessageInner = ({ part }: ToolMessageProps) => {
   // Delegated work has its own lifecycle, even after a parent follow-up/error.
   if (isTaskToolPart(part)) return <SubagentRunLine part={part} parentActive={parentActive} />
 
+  // So does a task started on another computer: it reads as a sub-agent.
+  const remoteStart = remoteThreads && part.type === "dynamic-tool" ? remoteThreadFromToolPart(part) : null
+  if (remoteStart && part.type === "dynamic-tool") {
+    return pinnedRemoteThreads.has(part.toolCallId) ? null : <RemoteThreadRunLine start={remoteStart} part={part} />
+  }
+
   if (part.type === "dynamic-tool") {
     const calls = codeModeToolCalls(part)
+    const remoteStarts = remoteThreads && calls ? (codeModeCallsWithResults(part) ?? []).flatMap((call) => {
+      const start = remoteThreadFromToolPart(call)
+      return start ? [{ start, call }] : []
+    }) : []
+    if (calls && remoteStarts.length > 0) {
+      const started = new Set(remoteStarts.map(({ call }) => call.toolCallId))
+      return (
+        <div className="flex min-w-0 flex-col gap-1">
+          <CodeModeTool part={part} calls={calls.filter((call) => !started.has(call.toolCallId))} lifecycle={lifecycle} connectors={connectorIdentities} />
+          {remoteStarts.filter(({ call }) => !pinnedRemoteThreads.has(call.toolCallId))
+            .map(({ start, call }) => <RemoteThreadRunLine key={start.key} start={start} part={call} />)}
+        </div>
+      )
+    }
     if (calls) return <CodeModeTool part={part} calls={calls} lifecycle={lifecycle} connectors={connectorIdentities} />
   }
 
@@ -368,11 +398,13 @@ const ToolMessageInner = ({ part }: ToolMessageProps) => {
 
 const isEmptyMessage = (message: UIMessage): boolean => message.parts.length === 0
 
-function withoutSilentSteps(messages: UIMessage[]): UIMessage[] {
+function withoutSilentSteps(messages: UIMessage[], remoteThreads: boolean): UIMessage[] {
   let changed = false
   const next = messages.flatMap((message) => {
     if (message.role !== "assistant") return [message]
-    const parts = message.parts.filter((part) => !(part.type === "dynamic-tool" && isSilentCodeModePart(part)))
+    // With tasks on other computers shown live, the agent's own checks on them are plumbing.
+    const parts = message.parts.filter((part) => !(part.type === "dynamic-tool"
+      && (isSilentCodeModePart(part) || remoteThreads && isRemoteThreadStatusCheck(part))))
     if (parts.length === message.parts.length) return [message]
     changed = true
     return parts.length > 0 ? [{ ...message, parts }] : []
@@ -1374,6 +1406,33 @@ function isMcpAppFramePart(part: UIMessage["parts"][number]): part is DynamicToo
     && !isNativeConnectionAppLaunch(part)
 }
 
+/**
+ * A script's calls with their results. A one-call script whose call kept no
+ * result of its own returned that call's result, as its row already shows.
+ */
+function codeModeCallsWithResults(part: DynamicToolUIPart): DynamicToolUIPart[] | null {
+  const calls = codeModeToolCalls(part)
+  const only = calls?.length === 1 ? calls[0] : undefined
+  if (!only || only.state !== "output-available" || only.output !== undefined || part.state !== "output-available") return calls
+  return [{ ...only, output: part.output }]
+}
+
+/** Tasks a group's steps started on other computers, directly or from a script. */
+function collectRemoteThreadStarts(items: UIMessageWithIndex[]) {
+  const starts = new Map<string, { start: RemoteThreadStart; part: DynamicToolUIPart }>()
+  for (const item of items) {
+    if (item.message.role !== "assistant" || isSessionErrorMessage(item.message)) continue
+    for (const part of item.message.parts) {
+      if (part.type !== "dynamic-tool") continue
+      for (const call of codeModeCallsWithResults(part) ?? [part]) {
+        const start = remoteThreadFromToolPart(call)
+        if (start && !starts.has(start.key)) starts.set(start.key, { start, part: call })
+      }
+    }
+  }
+  return [...starts.values()]
+}
+
 function collectMcpAppParts(items: UIMessageWithIndex[]): DynamicToolUIPart[] {
   const parts = new Map<string, DynamicToolUIPart>()
   for (const item of items) {
@@ -1422,6 +1481,8 @@ function MessageGroup({
   const creationRuns = React.useMemo(() => appCreationRuns(items.map(item => item.message), creationLive), [items, creationLive])
   const creationParts = React.useMemo(() => new Set(creationRuns.flatMap(run => [...(run.executions ?? []).map(part => part.toolCallId), ...(run.discoveries ?? []).map(part => part.toolCallId), ...(run.attempts ?? []).map(part => part.toolCallId), ...(run.preparation ? [run.preparation.toolCallId] : []), ...run.builds.map(part => part.toolCallId)])), [creationRuns])
   const isLiveGroup = isStreaming && isLastGroup
+  const remoteThreads = useRemoteThreadsEnabled()
+  const remoteThreadStarts = React.useMemo(() => remoteThreads ? collectRemoteThreadStarts(items) : [], [items, remoteThreads])
 
   if (!lastItem || isMessageEmptyGroup(items)) {
     return null;
@@ -1502,6 +1563,10 @@ function MessageGroup({
   // A short finished run reads fine as a list, so only long ones fold away.
   const collapseSteps =
     !isLiveGroup && stepItems.length > 0 && stepRowCount > COLLAPSED_STEP_RUN_MIN_ROWS
+  // A task on another computer outlives the turn that started it and may still
+  // need the person, so its row stays in view below a folded run.
+  const pinnedRemoteThreads = collapseSteps ? remoteThreadStarts : []
+  const pinnedRemoteIds = pinnedRemoteThreads.length > 0 ? new Set(pinnedRemoteThreads.map(({ part }) => part.toolCallId)) : NO_PINNED_REMOTE_THREADS
   const replyStartedAt = stepsStartedAt ?? (lastRealItem ? getMessageCreated(lastRealItem.message) : null)
   const replySummaryLabel = replyStartedAt !== null && stepsEndedAt !== null && stepsEndedAt > replyStartedAt
     ? `Worked for ${formatToolCallDuration(stepsEndedAt - replyStartedAt)}${stepRowCount ? ` · ${stepRowCount} ${stepRowCount === 1 ? "step" : "steps"}` : ""}`
@@ -1572,6 +1637,7 @@ function MessageGroup({
   return (
     <DevProfiler id={`MessageGroup:${lastItem.message.id}`}>
       <AppCreationPartsContext.Provider value={creationParts}>
+      <PinnedRemoteThreadsContext.Provider value={pinnedRemoteIds}>
       <ConnectionCardPartsContext.Provider value={connectionCardParts}>
       <div className="flex flex-col gap-2 group/message-group">
       {/* The scroll area keeps the same 8px rhythm the parts inside a single
@@ -1596,6 +1662,11 @@ function MessageGroup({
       ) : null}
       {creationRuns.map(run => <Message key={`creation-${run.id}`} className="mx-auto flex w-full max-w-3xl flex-col px-2 md:px-10"><AppBuilderStep run={run} active={creationLive && (run === creationRuns.at(-1) || Boolean(run.preparation && isToolPartInFlight(run.preparation)) || run.builds.some(isToolPartInFlight))} /></Message>)}
       {mcpAppParts.map(appFrame)}
+      {pinnedRemoteThreads.map(({ start, part }) => (
+        <Message key={`remote-thread-${start.key}`} className="mx-auto flex w-full max-w-3xl flex-col px-2 md:px-10">
+          <RemoteThreadRunLine start={start} part={part} />
+        </Message>
+      ))}
       {renderItems(proseItems, stepItems.length, collapseSteps)}
       {lastTextMessage && !isStreaming && (
         <div className={cn("mx-auto flex w-full max-w-3xl flex-wrap items-center gap-2 px-2 transition-opacity duration-150 group-hover/message-group:opacity-100 max-lg:opacity-100 pointer-coarse:opacity-100 md:px-8", forkingMessageId && forkingMessageId === lastRealItem?.message.id ? "opacity-100" : "opacity-0")}>
@@ -1636,6 +1707,7 @@ function MessageGroup({
       )}
       </div>
       </ConnectionCardPartsContext.Provider>
+      </PinnedRemoteThreadsContext.Provider>
       </AppCreationPartsContext.Provider>
     </DevProfiler>
   )
@@ -1780,7 +1852,8 @@ export function MessageList({ messages: transcript, messageIdReplacements, statu
   }, [activityActive, runStartedAt, syncDegraded])
   const latestUserMessageId = React.useMemo(() => messages.findLast((message) => message.role === "user")?.id, [messages])
   // Steps that render nothing are removed before layout, so they leave no gap.
-  const items = React.useMemo(() => groupMessages(dedupeRenderedTurnErrors(withoutSilentSteps(messages)), status), [messages, status]);
+  const remoteThreads = useRemoteThreadsEnabled()
+  const items = React.useMemo(() => groupMessages(dedupeRenderedTurnErrors(withoutSilentSteps(messages, remoteThreads)), status), [messages, status, remoteThreads]);
   const error = useSessionErrorMessage();
   const hasSessionErrorMessage = React.useMemo(() => messages.some(isSessionErrorMessage), [messages])
   const latestAssistantToolParts = React.useMemo(

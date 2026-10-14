@@ -151,6 +151,13 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  remoteSessionSubagents: {
+    label: "Desktop: tasks on other computers as sub-agents",
+    description: "A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
 })
 
 export type FeatureKey = keyof typeof FEATURES

@@ -202,15 +202,19 @@ function getPillMatchers(): PillMatcher[] {
     // string, left inline in the user's text.
     { re: templateRegExp(skillInstruction), toPill: (match) => match[1] ? { kind: "skill", name: match[1] } : null },
     { re: templateRegExp(connectorPrompt), toPill: (match) => match[1] ? { kind: "connector", name: match[1] } : null },
-    ...(["cloud", "desktop"] as const).map((target): PillMatcher => ({
-      re: new RegExp(escapeRegExp(computerMentionInstruction(target)), "g"),
+    // Both wordings: sent with the chat following the task, or not.
+    ...(["cloud", "desktop"] as const).flatMap((target) => [false, true].map((followed): PillMatcher => ({
+      re: new RegExp(escapeRegExp(computerMentionInstruction(target, followed)), "g"),
       toPill: () => ({ kind: "computer", target }),
-    })),
+    }))),
   ];
   return pillMatchers;
 }
 
 function isInstructionMatch(pill: ComposerPill, text: string) {
+  if (pill.kind === "computer") {
+    return text === computerMentionInstruction(pill.target, false) || text === computerMentionInstruction(pill.target, true);
+  }
   return text === composerPillInstruction(pill);
 }
 

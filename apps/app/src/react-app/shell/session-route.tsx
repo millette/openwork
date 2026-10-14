@@ -114,6 +114,8 @@ import { automationProviderCatalog } from "@/react-app/domains/automations/autom
 import { CalendarPage } from "@/react-app/domains/calendar/calendar-page";
 import { useCalendarFeature } from "@/react-app/domains/calendar/use-calendar-data";
 import { useBackgroundShellTasksFeature } from "@/react-app/domains/session/status/use-background-shell-tasks-feature";
+import { useRemoteSessionSubagentsFeature } from "@/react-app/domains/session/remote-threads/use-remote-session-subagents-feature";
+import { remoteThreadAttentionBySession, useRemoteThreadAttentionKey } from "@/react-app/domains/session/remote-threads/remote-thread-store";
 import { useAutomationsDenContext } from "@/react-app/domains/automations/use-automations";
 import { AppsPage } from "@/react-app/domains/apps/apps-page";
 import { DashboardPage } from "@/react-app/domains/dashboard/dashboard-page";
@@ -432,6 +434,7 @@ export function SessionRoute() {
   // The Calendar is an Automations view behind the automationCalendar feature.
   const calendarFeature = useCalendarFeature(useAutomationsDenContext());
   useBackgroundShellTasksFeature();
+  useRemoteSessionSubagentsFeature();
   const calendarSurfaceAvailable = automationsEnabled && denAuth.isSignedIn && calendarFeature.data === true;
   const calendarAvailabilityPending = denAuthChecking || (automationsEnabled && denAuth.isSignedIn && calendarFeature.isLoading);
   const calendarRouteActive = calendarSurfaceAvailable && calendarRouteRequested;
@@ -882,7 +885,9 @@ export function SessionRoute() {
   }, [seedWorkspaceActivitySessions, workspaceSessionGroups]);
 
   const attentionLocale = currentLocale();
+  const remoteAttentionKey = useRemoteThreadAttentionKey();
   const sidebarSessionAttention = useMemo(() => {
+    const remoteAttention = remoteThreadAttentionBySession(remoteAttentionKey);
     const statusById: Record<string, string> = {};
     const labelById: Record<string, string> = {};
     const sourceById: Record<string, "child" | "descendant"> = {};
@@ -901,9 +906,18 @@ export function SessionRoute() {
           sourceById[session.id] = entry.blockedBy.relationship;
         }
       }
+      // A task this chat started on another computer waits on the person, like a sub-agent would.
+      for (const session of group.sessions) {
+        const remote = remoteAttention.get(session.id);
+        const own = statusById[session.id];
+        if (!remote || own === "waiting" || own === "error") continue;
+        statusById[session.id] = "waiting";
+        labelById[session.id] = sessionAttentionLabel({ sessionId: session.id, title: remote.title, kind: remote.kind });
+        sourceById[session.id] = "child";
+      }
     }
     return { statusById, labelById, sourceById };
-  }, [attentionLocale, selectWorkspaceAttention, sessionActivityByWorkspaceId, sessionWaitingByWorkspaceId, sessionChildIdsByWorkspaceId, workspaceSessionGroups]);
+  }, [attentionLocale, remoteAttentionKey, selectWorkspaceAttention, sessionActivityByWorkspaceId, sessionWaitingByWorkspaceId, sessionChildIdsByWorkspaceId, workspaceSessionGroups]);
   const sidebarSessionStatusById = sidebarSessionAttention.statusById;
 
   const sidebarActiveWorkspaceId = useMemo(() => {

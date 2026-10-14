@@ -857,6 +857,14 @@ import type {
   PostV1PluginsImportMcpsFromGithubUrlPreviewResponses,
   PostV1PluginsImportMcpsFromGithubUrlResponses,
   PostV1PluginsResponses,
+  PostV1RemoteSessionsReadErrors,
+  PostV1RemoteSessionsReadResponses,
+  PostV1RemoteSessionsSendErrors,
+  PostV1RemoteSessionsSendResponses,
+  PostV1RemoteSessionsStatusErrors,
+  PostV1RemoteSessionsStatusResponses,
+  PostV1RemoteSessionsStopErrors,
+  PostV1RemoteSessionsStopResponses,
   PostV1ScimReconcileErrors,
   PostV1ScimReconcileResponses,
   PostV1ScimTokenErrors,
@@ -946,6 +954,7 @@ import type {
   PutV1TeamsByKeyByExternalKeyResponses,
   PutV1TeamsByTeamIdPermissionSetErrors,
   PutV1TeamsByTeamIdPermissionSetResponses,
+  RemoteSessionStatusRequest,
   RenamePermissionSetBody,
   RunAutomationNowErrors,
   RunAutomationNowResponses,
@@ -2983,6 +2992,175 @@ export class DenClient extends HeyApiClient {
         ...params,
       },
     );
+  }
+
+  /**
+   * Get the status of remote sessions
+   *
+   * Returns the compact status of up to ten of the member's remote sessions: Cloud sessions by sessionId, desktop and registered client tasks by commandId. Pass each version received; an unchanged session returns only its ref and version. waitMs holds the call until one changes or every one has settled. Same result as the remote-session:status capability.
+   */
+  public postV1RemoteSessionsStatus<ThrowOnError extends boolean = false>(
+    parameters: {
+      remoteSessionStatusRequest: RemoteSessionStatusRequest;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "remoteSessionStatusRequest", map: "body" }] }]);
+    return (options?.client ?? this.client).post<
+      PostV1RemoteSessionsStatusResponses,
+      PostV1RemoteSessionsStatusErrors,
+      ThrowOnError
+    >({
+      url: "/v1/remote-sessions/status",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Read a remote session
+   *
+   * Returns a page of a remote session's transcript by sessionId, or a desktop task's receipt by commandId or requestId. A desktop that has not answered within about 20 seconds returns state pending with a requestId to read later. Same result as the remote-session:read capability.
+   */
+  public postV1RemoteSessionsRead<ThrowOnError extends boolean = false>(
+    parameters?: {
+      messageId?: string;
+      sessionId?: string;
+      commandId?: string;
+      requestId?: string;
+      workspaceId?: string;
+      from?: "start" | "end";
+      cursor?: string;
+      limit?: number;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "messageId" },
+            { in: "body", key: "sessionId" },
+            { in: "body", key: "commandId" },
+            { in: "body", key: "requestId" },
+            { in: "body", key: "workspaceId" },
+            { in: "body", key: "from" },
+            { in: "body", key: "cursor" },
+            { in: "body", key: "limit" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      PostV1RemoteSessionsReadResponses,
+      PostV1RemoteSessionsReadErrors,
+      ThrowOnError
+    >({
+      url: "/v1/remote-sessions/read",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Send a follow-up to a remote session
+   *
+   * Sends the member's follow-up prompt to one of their remote sessions. Returns an acceptance receipt, or state pending with a requestId when a desktop has not answered within about 20 seconds. Same result as the remote-session:send capability.
+   */
+  public postV1RemoteSessionsSend<ThrowOnError extends boolean = false>(
+    parameters: {
+      messageId?: string;
+      sessionId: string;
+      workspaceId?: string;
+      prompt: string;
+      model?: {
+        providerId: string;
+        modelId: string;
+        variant?: string;
+      };
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "messageId" },
+            { in: "body", key: "sessionId" },
+            { in: "body", key: "workspaceId" },
+            { in: "body", key: "prompt" },
+            { in: "body", key: "model" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      PostV1RemoteSessionsSendResponses,
+      PostV1RemoteSessionsSendErrors,
+      ThrowOnError
+    >({
+      url: "/v1/remote-sessions/send",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Stop a remote session
+   *
+   * Stops one of the member's running remote sessions. For a desktop session pass messageId, the latest user turn, so a newer turn is never stopped. Same result as the remote-session:stop capability.
+   */
+  public postV1RemoteSessionsStop<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionId: string;
+      workspaceId?: string;
+      messageId?: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "sessionId" },
+            { in: "body", key: "workspaceId" },
+            { in: "body", key: "messageId" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      PostV1RemoteSessionsStopResponses,
+      PostV1RemoteSessionsStopErrors,
+      ThrowOnError
+    >({
+      url: "/v1/remote-sessions/stop",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
   }
 
   /**
