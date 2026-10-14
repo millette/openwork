@@ -353,6 +353,10 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
   let shortcutFocus = null;
   let reopeningTab = false;
   let browserViewVisible = false;
+  // How the renderer presents the visible conversation's browser
+  // ({ sessionId, mode }), so Escape inside a full-screen page can leave full
+  // screen. It never survives a conversation switch.
+  let browserPresentation = null;
   let backgroundWindow = null;
   // Last accepted geometry in window DIPs. Reattaching must not scale an old
   // CSS rectangle with a newer zoom while the renderer is still catching up.
@@ -1159,9 +1163,20 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
       resetViewportEmulation(view);
     });
     view.webContents.on("before-input-event", (event, input) => {
+      if (input.type === "keyDown" && input.key === "Escape" && !input.alt && !input.control && !input.meta && !input.shift
+        && requestPresentationExit(tab)) {
+        event.preventDefault();
+        return;
+      }
       if (!isFocusedBrowserTab(tab)) return;
       setShortcutFocus(tabId);
       handleBrowserShortcut(event, input);
+    });
+    // Browser-native and CDP key delivery take different paths in Chromium.
+    // The page preload's fallback only asks to leave full screen; the same
+    // foreground checks apply, and it never grants or resumes browser control.
+    view.webContents.on("ipc-message", (event, channel) => {
+      if (channel === "openwork:browser:escape" && event.senderFrame === view.webContents.mainFrame) requestPresentationExit(tab);
     });
     view.webContents.once("destroyed", () => {
       // CDP Target.closeTarget and page-initiated close bypass our tab-strip
@@ -1297,10 +1312,63 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
     releaseEmptyBackgroundWindow();
   }
 
+  /**
+   * Escape pressed inside the on-screen page of a full-screen conversation
+   * returns focus to OpenWork and asks the renderer to leave full screen.
+   * Only the exact foreground tab of the presented conversation qualifies.
+   */
+  function requestPresentationExit(tab) {
+    const owner = registry.ownerOf(tab.tabId);
+    if (browserPresentation?.mode !== "fullscreen" || browserPresentation.sessionId !== owner
+      || registry.visibleSessionId() !== owner || registry.onScreenTabId() !== tab.tabId || !browserViewVisible
+      || getBrowserTab(tab.tabId) !== tab || tab.view.webContents.isDestroyed()
+      || !window()?.contentView.children.includes(tab.view)) return false;
+    browserPresentation = null;
+    window()?.webContents.focus();
+    sendToRenderer("openwork:browser:presentation-exit", { sessionId: owner, tabId: tab.tabId });
+    return true;
+  }
+
+  function setBrowserPresentation(input) {
+    const mode = input && typeof input === "object" ? input.mode : null;
+    if (!["hidden", "floating", "side", "fullscreen"].includes(mode)) return false;
+    const sessionId = normalizeSessionId(input.sessionId);
+    browserPresentation = sessionId === registry.visibleSessionId() ? { sessionId, mode } : null;
+    return browserPresentation !== null;
+  }
+
+  // A small preview of the visible conversation's on-screen tab for the
+  // floating browser card. Never for a background conversation, a page the
+  // person controls (it may hold sign-in details) or a hidden error page.
+  async function captureBrowserThumbnail(tabId) {
+    const id = typeof tabId === "string" ? tabId : null;
+    const tab = id ? getBrowserTab(id) : null;
+    const owner = id ? registry.ownerOf(id) : null;
+    const usable = () => {
+      const mainWindow = window();
+      return !!tab && getBrowserTab(id) === tab && !tab.suspending && !tab.background && !tab.view.webContents.isDestroyed()
+        && registry.ownerOf(id) === owner && owner === registry.visibleSessionId() && registry.onScreenTabId() === id
+        && tab.browserTask?.status !== "paused" && !showsErrorPage(tab)
+        && !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized();
+    };
+    if (!usable()) return null;
+    const image = await tab.view.webContents.capturePage(undefined, { stayHidden: true });
+    if (!usable() || image.isEmpty()) return null;
+    const size = image.getSize();
+    if (size.width <= 0 || size.height <= 0) return null;
+    const scale = Math.min(1, 480 / size.width, 300 / size.height);
+    const width = Math.max(1, Math.floor(size.width * scale));
+    const height = Math.max(1, Math.floor(size.height * scale));
+    const jpeg = image.resize({ width, height, quality: "good" }).toJPEG(60);
+    if (jpeg.byteLength > 512 * 1024) return null;
+    return { tabId: id, dataUrl: `data:image/jpeg;base64,${jpeg.toString("base64")}`, width, height, capturedAt: Date.now() };
+  }
+
   function setVisibleSession(sessionId) {
     const previous = registry.visibleSessionId();
     const next = registry.setVisibleSession(sessionId);
     if (next === previous) return next;
+    browserPresentation = null;
     shortcutFocus = null;
     hideBrowserView();
     applySurfacing();
@@ -1756,6 +1824,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
     if (sessionId !== undefined) {
       const previous = registry.visibleSessionId();
       if (registry.setVisibleSession(sessionId) !== previous) {
+        browserPresentation = null;
         shortcutFocus = null;
         hideContextMenu();
         applySurfacing();
@@ -1778,6 +1847,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
   function destroyBrowserView() {
     linkChoiceRequest?.finish(null);
     hideBrowserView();
+    browserPresentation = null;
     menuShowSerial += 1;
     closeAllBrowserTabs();
     browserTabs.clear();
@@ -1821,6 +1891,14 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
     ipcMain.handle("openwork:browser:setVisibleSession", (event, sessionId) => {
       if (!isMainRenderer(event)) return false;
       return setVisibleSession(normalizeSessionId(sessionId));
+    });
+    ipcMain.handle("openwork:browser:presentation", (event, input) => {
+      if (!isMainRenderer(event)) return false;
+      return setBrowserPresentation(input);
+    });
+    ipcMain.handle("openwork:browser:thumbnail", (event, tabId) => {
+      if (!isMainRenderer(event)) return null;
+      return captureBrowserThumbnail(tabId);
     });
     ipcMain.handle("openwork:browser:openUrl", (_event, url, provider, options) => (
       openBrowserUrlForAutomation(url, provider, {

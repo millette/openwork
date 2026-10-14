@@ -259,6 +259,8 @@ contextBridge.exposeInMainWorld("__OPENWORK_ELECTRON__", {
     },
     openUrl(url, provider, options) { return ipcRenderer.invoke("openwork:browser:openUrl", url, provider, options); },
     setVisibleSession(sessionId) { return ipcRenderer.invoke("openwork:browser:setVisibleSession", sessionId); },
+    setPresentation(sessionId, mode) { return ipcRenderer.invoke("openwork:browser:presentation", { sessionId, mode }); },
+    thumbnail(tabId) { return ipcRenderer.invoke("openwork:browser:thumbnail", tabId); },
     navigate(url) { return ipcRenderer.invoke("openwork:browser:navigate", url); },
     back() { return ipcRenderer.invoke("openwork:browser:back"); },
     forward() { return ipcRenderer.invoke("openwork:browser:forward"); },
@@ -297,6 +299,11 @@ contextBridge.exposeInMainWorld("__OPENWORK_ELECTRON__", {
       const handler = (_event, payload) => callback(payload);
       ipcRenderer.on("openwork:browser:panel-closed", handler);
       return () => ipcRenderer.removeListener("openwork:browser:panel-closed", handler);
+    },
+    onPresentationExit(callback) {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on("openwork:browser:presentation-exit", handler);
+      return () => ipcRenderer.removeListener("openwork:browser:presentation-exit", handler);
     },
   },
   // Development-only observation of native popup menus; main registers no handler otherwise.
